@@ -27,6 +27,18 @@ module AypexBankTransfer
       ::Spree::PaymentSessions::BankTransfer
     end
 
+    def create_payment_session(order:, amount: nil, external_data: {})
+      ::Spree::PaymentSessions::BankTransfer.create!(
+        order: order,
+        payment_method: self,
+        amount: amount || order.total_minus_store_credits,
+        currency: order.currency,
+        external_id: ReferenceGenerator.new(payment_method: self).generate,
+        external_data: external_data,
+        expires_at: preferred_expiry_days.to_i.days.from_now
+      )
+    end
+
     def auto_capture?
       false
     end

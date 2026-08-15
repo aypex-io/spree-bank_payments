@@ -25,4 +25,14 @@ FactoryBot.define do
       }
     end
   end
+
+  factory :bank_transfer_payment_session, class: 'Spree::PaymentSessions::BankTransfer' do
+    association :order, factory: :order
+    association :payment_method, factory: :bank_transfer_gateway
+    amount { 25.00 }
+    currency { 'GBP' }
+    status { 'pending' }
+    sequence(:external_id) { |n| "TKF-TEST#{n.to_s.rjust(2, '0')}" }
+    expires_at { 3.days.from_now }
+  end
 end
