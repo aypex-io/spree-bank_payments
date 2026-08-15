@@ -73,6 +73,10 @@ module AypexBankTransfer
       AypexBankTransfer::ReconcilerState.find_or_create_by!(payment_method_id: id)
     end
 
+    def reconciler
+      @reconciler ||= Reconcilers::Base.build(payment_method: self)
+    end
+
     def bank_details
       {
         account_name: preferred_account_name,
