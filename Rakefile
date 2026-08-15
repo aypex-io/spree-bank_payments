@@ -17,5 +17,11 @@ end
 desc 'Generates a dummy app for testing'
 task :test_app do
   ENV['LIB_NAME'] = 'aypex_bank_transfer'
+  # extension:test_app (spree_core) generates the dummy app, migrates Spree's own
+  # schema, then auto-loads generators/aypex_bank_transfer/install/install_generator
+  # and runs it with --auto-run-migrations. That generator copies *only* this gem's
+  # migrations (scoped via `rake aypex_bank_transfer:install:migrations`, not the
+  # unscoped `railties:install:migrations`) and runs db:migrate, so a fresh
+  # `rake test_app` needs no manual migration step.
   Rake::Task['extension:test_app'].execute(install_storefront: true, install_admin: true)
 end
