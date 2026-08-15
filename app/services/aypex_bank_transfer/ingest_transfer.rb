@@ -1,0 +1,59 @@
+module AypexBankTransfer
+  class IngestTransfer
+    def initialize(payment_method:, transfer_data:)
+      @payment_method = payment_method
+      @data = transfer_data
+    end
+
+    def call
+      transfer = find_or_create_transfer
+
+      # Webhook and poll both delivering the same transfer is the expected
+      # case, not an error. The unique index makes replay a no-op.
+      return transfer if transfer.applied?
+
+      session = matching_session(transfer)
+      session ? ApplyTransfer.call(transfer: transfer, payment_session: session) : transfer
+
+      transfer
+    end
+
+    private
+
+    attr_reader :payment_method, :data
+
+    def find_or_create_transfer
+      IncomingTransfer.create_with(
+        amount: data.amount,
+        currency: data.currency,
+        reference_raw: data.reference,
+        payer_name: data.payer_name,
+        occurred_at: data.occurred_at,
+        raw_payload: data.raw || {},
+        state: 'unmatched'
+      ).find_or_create_by!(
+        provider: data.provider,
+        provider_transaction_id: data.provider_transaction_id
+      )
+    end
+
+    # Auto-apply demands certainty: exact reference, exact amount, exact
+    # currency, against exactly one still-open session. Anything else queues.
+    def matching_session(transfer)
+      return nil if transfer.reference_normalized.blank?
+
+      candidates = ::Spree::PaymentSessions::BankTransfer.open.where(
+        payment_method_id: payment_method.id,
+        external_id_normalized: transfer.reference_normalized
+      )
+
+      return nil unless candidates.count == 1
+
+      session = candidates.first
+      return nil unless session.amount == transfer.amount
+      return nil unless session.currency == transfer.currency
+
+      session
+    end
+  end
+end
