@@ -9,4 +9,20 @@ FactoryBot.define do
     occurred_at { Time.current }
     state { 'unmatched' }
   end
+
+  factory :bank_transfer_gateway, class: 'AypexBankTransfer::Gateway' do
+    name { 'Bank Transfer' }
+    preferences do
+      {
+        reconciler: 'manual',
+        reference_prefix: 'TKF-',
+        expiry_days: 3,
+        discount_percent: 3,
+        poll_interval_minutes: 15,
+        account_name: 'Aypex Ltd',
+        account_iban: 'GB00TEST00000000000000',
+        account_bic: 'REVOGB21'
+      }
+    end
+  end
 end
