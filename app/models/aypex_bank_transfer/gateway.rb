@@ -28,6 +28,15 @@ module AypexBankTransfer
     end
 
     def create_payment_session(order:, amount: nil, external_data: {})
+      # The quoted amount must already reflect the discount. The Payment
+      # after_create hook cannot be relied on here: in this gem the payment
+      # is often not created until reconciliation (Task 6's
+      # find_or_create_payment!), which would quote the customer the
+      # undiscounted total and then move the goalposts once funds arrive.
+      # ApplyDiscount is idempotent, so the later reconciliation-time hook
+      # becomes a harmless no-op rather than a second discount.
+      ApplyDiscount.call(order: order, payment_method: self)
+
       ::Spree::PaymentSessions::BankTransfer.create!(
         order: order,
         payment_method: self,

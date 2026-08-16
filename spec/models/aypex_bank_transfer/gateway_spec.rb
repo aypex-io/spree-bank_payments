@@ -24,4 +24,27 @@ RSpec.describe AypexBankTransfer::Gateway do
   it 'exposes bank details for display' do
     expect(gateway.bank_details).to include(account_name: 'Aypex Ltd', iban: 'GB00TEST00000000000000')
   end
+
+  describe '#create_payment_session' do
+    # item_total 100, discount 3% (factory default) -> discounted total 97.00.
+    # order_with_line_items has no item_total transient (see
+    # apply_discount_spec.rb): use the real line_items_price transient.
+    let(:order) { create(:order_with_line_items, line_items_price: 100.00, shipment_cost: 0) }
+
+    it 'quotes the discounted total, not the undiscounted one' do
+      session = gateway.create_payment_session(order: order)
+
+      expect(session.amount).to eq(order.reload.total)
+      expect(session.amount).to eq(97.00)
+    end
+
+    it 'does not move the goalposts once a payment is later created (reconciliation-time hook is a no-op)' do
+      session = gateway.create_payment_session(order: order)
+      quoted_amount = session.amount
+
+      create(:payment, order: order, payment_method: gateway, amount: quoted_amount)
+
+      expect(order.reload.total).to eq(quoted_amount)
+    end
+  end
 end
