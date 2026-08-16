@@ -1,6 +1,10 @@
 <%# app/views/spree/admin/bank_transfers/index.html.erb %>
 <h1>Unmatched bank transfers</h1>
 
+<p>
+  <%= link_to 'Record a received transfer', spree.new_admin_bank_transfer_path, class: 'btn btn-primary' %>
+</p>
+
 <% if @transfers.empty? %>
   <p>Nothing waiting. Every observed transfer has been matched or ignored.</p>
 <% else %>

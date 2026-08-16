@@ -1,0 +1,46 @@
+<%# app/views/spree/admin/bank_transfers/new.html.erb %>
+<h1>Record a received transfer</h1>
+
+<p>
+  Use this when money has landed in the bank account and you want it recorded
+  against an order. If the amount, currency and reference match an order that is
+  still waiting, the payment is applied straight away. Anything else is added to
+  the unmatched queue so you can match it by hand.
+</p>
+
+<%= form_tag spree.admin_bank_transfers_path, method: :post do %>
+  <div class="mb-3">
+    <%= label_tag 'bank_transfer[payment_method_id]', 'Payment method' %>
+    <%= select_tag 'bank_transfer[payment_method_id]',
+          options_from_collection_for_select(@payment_methods, :id, :name, @transfer_form[:payment_method_id]),
+          class: 'form-control' %>
+  </div>
+
+  <div class="mb-3">
+    <%= label_tag 'bank_transfer[amount]', 'Amount received' %>
+    <%= text_field_tag 'bank_transfer[amount]', @transfer_form[:amount], class: 'form-control' %>
+  </div>
+
+  <div class="mb-3">
+    <%= label_tag 'bank_transfer[currency]', 'Currency' %>
+    <%= text_field_tag 'bank_transfer[currency]', @transfer_form[:currency], class: 'form-control' %>
+  </div>
+
+  <div class="mb-3">
+    <%= label_tag 'bank_transfer[payer_name]', 'Payer name (as shown on the statement)' %>
+    <%= text_field_tag 'bank_transfer[payer_name]', @transfer_form[:payer_name], class: 'form-control' %>
+  </div>
+
+  <div class="mb-3">
+    <%= label_tag 'bank_transfer[reference]', 'Reference as quoted by the customer' %>
+    <%= text_field_tag 'bank_transfer[reference]', @transfer_form[:reference], class: 'form-control' %>
+  </div>
+
+  <div class="mb-3">
+    <%= label_tag 'bank_transfer[occurred_at]', 'Date received' %>
+    <%= date_field_tag 'bank_transfer[occurred_at]', @transfer_form[:occurred_at], class: 'form-control' %>
+  </div>
+
+  <%= submit_tag 'Record transfer', class: 'btn btn-primary' %>
+  <%= link_to 'Back to the queue', spree.admin_bank_transfers_path, class: 'btn btn-link' %>
+<% end %>

@@ -207,4 +207,93 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
       expect(flash[:error]).to be_present
     end
   end
+
+  # C1: the shipped (Manual) configuration has no poll and no webhook, so
+  # this form is the only way an IncomingTransfer can ever come into
+  # existence. Without it a store takes the customer's money and has no
+  # action available to record it.
+  describe 'GET #new' do
+    render_views
+
+    it 'renders the form' do
+      payment_method
+      request.headers['Turbo-Frame'] = 'bank-transfers'
+
+      get :new
+
+      expect(response).to be_successful
+      expect(response.body).to include('bank_transfer[amount]')
+      expect(response.body).to include('bank_transfer[reference]')
+      expect(response.body).to include('bank_transfer[occurred_at]')
+    end
+  end
+
+  describe 'POST #create' do
+    let!(:matching_session) do
+      create(:bank_transfer_payment_session,
+             order: order, payment_method: payment_method,
+             amount: 25.00, currency: 'GBP', external_id: 'TKF-7Q4X2')
+    end
+
+    def submit(overrides = {})
+      post :create, params: {
+        bank_transfer: {
+          payment_method_id: payment_method.id,
+          amount: '25.00',
+          currency: 'GBP',
+          payer_name: 'Jane Doe',
+          reference: 'TKF-7Q4X2',
+          occurred_at: Date.current.to_s
+        }.merge(overrides)
+      }
+    end
+
+    it 'auto-applies an exact match through IngestTransfer and moves the order to paid' do
+      expect { submit }.to change(AypexBankTransfer::IncomingTransfer, :count).by(1)
+
+      recorded = AypexBankTransfer::IncomingTransfer.last
+      expect(recorded).to be_applied
+      expect(recorded.payment_session).to eq(matching_session)
+      expect(recorded.payment_method_id).to eq(payment_method.id)
+      expect(order.reload.payment_state).to eq('paid')
+    end
+
+    it 'queues a non-matching transfer as unmatched instead of applying it' do
+      expect { submit(reference: 'NOT-A-REFERENCE') }.
+        to change(AypexBankTransfer::IncomingTransfer, :count).by(1)
+
+      recorded = AypexBankTransfer::IncomingTransfer.last
+      expect(recorded.state).to eq('unmatched')
+      expect(recorded.payment_session).to be_nil
+      expect(order.reload.payment_state).not_to eq('paid')
+      expect(matching_session.reload.status).to eq('pending')
+    end
+
+    it 'does not double-apply when the same form is submitted twice' do
+      submit
+      expect(order.reload.payment_state).to eq('paid')
+
+      expect { submit }.not_to change(AypexBankTransfer::IncomingTransfer, :count)
+      expect(order.reload.payments.completed.count).to eq(1)
+    end
+
+    it 'rejects a non-numeric amount without creating anything' do
+      expect { submit(amount: 'twenty five') }.not_to change(AypexBankTransfer::IncomingTransfer, :count)
+      expect(flash.now[:error]).to be_present
+    end
+
+    it 'rejects a zero amount without creating anything' do
+      expect { submit(amount: '0') }.not_to change(AypexBankTransfer::IncomingTransfer, :count)
+      expect(flash.now[:error]).to be_present
+    end
+
+    it 'rejects a payment method belonging to another store' do
+      other_store = create(:store, url: 'other-store.example.com')
+      other_gateway = create(:bank_transfer_gateway, store: other_store)
+
+      expect { submit(payment_method_id: other_gateway.id) }.
+        not_to change(AypexBankTransfer::IncomingTransfer, :count)
+      expect(flash.now[:error]).to be_present
+    end
+  end
 end
