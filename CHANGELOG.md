@@ -17,9 +17,15 @@ proportionally to each line's amount with largest-remainder rounding so the
 parts sum to exactly `-(item_total * pct / 100)` — naive per-line rounding
 drifts by a cent, and `order.total` must match the amount quoted on the payment
 session or auto-apply's exact-equality check sends every payment to the manual
-queue. A new `Spree::BankPayments::Adjuster::Discount`, registered ahead of
-`Spree::Adjustable::Adjuster::Tax`, folds these into `taxable_adjustment_total`,
-so recorded tax now falls with the discount.
+queue. A new `Spree::BankPayments::Adjuster::Discount`, registered in
+`config.spree.adjusters`, folds these into `taxable_adjustment_total` before tax
+is computed, so recorded tax now falls with the discount. (It is inserted ahead
+of `Spree::Adjustable::Adjuster::Tax` so the array reads in execution order, but
+Spree runs the tax adjuster last by construction — the position is cosmetic.)
+
+The type filters match subclassed gateways, consistently with `is_a?`-based
+detection: a store subclassing `Spree::BankPayments::Gateway` gets the same tax
+treatment and the same cleanup on a payment-method switch.
 
 The discount **stacks with promotions** — it is not a competing promo
 adjustment, so neither side is marked ineligible. A 20% promotion plus a 3%

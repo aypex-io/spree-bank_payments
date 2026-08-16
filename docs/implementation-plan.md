@@ -1,3 +1,10 @@
+> **Historical.** This plan records the original v5.0.0 build and is kept as a
+> record of that work. It is not a description of current behaviour: since
+> v5.1.0 the bank-transfer discount is applied as one adjustment per **line
+> item** (so it reduces recorded tax on a tax-inclusive store) rather than as a
+> single order-level adjustment, and the code shown below for it is superseded.
+> See `docs/design-spec.md` and the CHANGELOG for what ships today.
+
 # Spree::BankPayments Core Gem — Implementation Plan (Phase 1)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

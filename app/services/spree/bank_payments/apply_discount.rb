@@ -123,9 +123,11 @@ module Spree
         Spree.t('bank_payments.discount_label', percent: payment_method.formatted_discount_percent)
       end
 
+      # Type filter covers subclasses (see gateway_type_names): `bank_transfer?`
+      # matches them with `is_a?`, so every SQL filter here must too.
       def settled_by_bank_transfer?
         order.payments.completed.joins(:payment_method).
-          where(spree_payment_methods: { type: 'Spree::BankPayments::Gateway' }).exists?
+          where(spree_payment_methods: { type: Spree::BankPayments.gateway_type_names }).exists?
       end
 
       # Scoped by `order.all_adjustments` (every adjustment carrying this
@@ -135,10 +137,12 @@ module Spree
       # discount on a payment-method switch -- the customer keeps a transfer
       # discount while paying by card. The wider scope also still catches the
       # order-level adjustments written by earlier versions of this gem.
+      #
+      # Matches subclassed gateways too, for the same reason as above.
       def remove_existing
-        existing = order.all_adjustments.where(source_type: 'Spree::PaymentMethod').
-                   joins("INNER JOIN spree_payment_methods ON spree_payment_methods.id = spree_adjustments.source_id").
-                   where(spree_payment_methods: { type: 'Spree::BankPayments::Gateway' })
+        existing = order.all_adjustments.
+                   where(source_type: 'Spree::PaymentMethod',
+                         source_id: Spree::BankPayments.gateway_scope.select(:id))
 
         return if existing.empty?
 

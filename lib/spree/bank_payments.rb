@@ -18,17 +18,20 @@ module Spree
       'spree_bank_payments_'
     end
 
-    # Inserts Spree::BankPayments::Adjuster::Discount into
-    # `Rails.application.config.spree.adjusters`, immediately BEFORE
-    # Spree::Adjustable::Adjuster::Tax.
+    # Registers Spree::BankPayments::Adjuster::Discount in
+    # `Rails.application.config.spree.adjusters`.
     #
-    # Order is load-bearing. Spree::Adjustable::AdjustmentsUpdater runs every
-    # non-tax adjuster, persists the resulting totals onto the adjustable, and
-    # only then runs the tax adjuster -- which recomputes tax from
-    # LineItem#taxable_basis, derived from the taxable_adjustment_total we just
-    # contributed. Registered after Tax (or appended blindly) the discount
-    # would land too late and tax would still be computed on the undiscounted
-    # price.
+    # Being in that array at all is what matters: AdjustmentsUpdater runs every
+    # registered non-tax adjuster and persists the resulting totals onto the
+    # adjustable BEFORE computing tax, so an unregistered adjuster means the
+    # line-item discounts never reach taxable_adjustment_total and tax is still
+    # computed on the undiscounted price.
+    #
+    # Position within the array is NOT significant. AdjustmentsUpdater picks the
+    # tax adjuster out by name (`adjusters - [tax_adjuster]`) and always runs it
+    # last, whatever the order. We insert ahead of it so the array reads in
+    # execution order, but appending would behave identically -- do not treat
+    # the insertion point as load-bearing.
     #
     # Called from BOTH hooks in config/initializers/spree.rb, for two different
     # reasons:
@@ -53,13 +56,33 @@ module Spree
       # constant, so a `include?` guard would let duplicates accumulate.
       adjusters.reject! { |adjuster| adjuster.name == 'Spree::BankPayments::Adjuster::Discount' }
 
+      # Cosmetic: keeps the array in execution order. AdjustmentsUpdater runs
+      # the tax adjuster last regardless, so `<<` would be equivalent.
       tax_index = adjusters.index { |adjuster| adjuster.name == 'Spree::Adjustable::Adjuster::Tax' }
       if tax_index
         adjusters.insert(tax_index, Spree::BankPayments::Adjuster::Discount)
       else
-        # No tax adjuster configured: ordering is moot, just contribute.
         adjusters << Spree::BankPayments::Adjuster::Discount
       end
+    end
+
+    # Every STI type name that counts as one of this gem's gateways.
+    #
+    # `ApplyDiscount#bank_transfer?` tests with `is_a?`, which matches
+    # subclasses, so a store subclassing the gateway HAS the discount applied.
+    # The SQL filters must agree, or those adjustments would be created but
+    # never counted into taxable_adjustment_total (VAT silently unfixed -- the
+    # exact bug 5.1.0 fixes) and never removed on a payment-method switch
+    # (leaking margin). Resolved at call time so it reflects whatever is loaded.
+    def self.gateway_type_names
+      ([Spree::BankPayments::Gateway] + Spree::BankPayments::Gateway.descendants).map(&:name).uniq
+    end
+
+    # Subquery of payment-method ids for those types. `unscoped` deliberately:
+    # a soft-deleted payment method must still have its stale adjustments found
+    # and removed.
+    def self.gateway_scope
+      Spree::PaymentMethod.unscoped.where(type: gateway_type_names)
     end
 
     def self.pg_trgm_available?

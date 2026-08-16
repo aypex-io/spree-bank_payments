@@ -5,13 +5,16 @@ module Spree
       # +taxable_adjustment_total+ so the discount actually reduces recorded
       # tax on a tax-inclusive (VAT) store.
       #
-      # Registered ahead of Spree::Adjustable::Adjuster::Tax (see
-      # config/initializers/spree.rb): AdjustmentsUpdater runs every non-tax
-      # adjuster, persists the running totals, and only then runs the tax
-      # adjuster -- which recomputes each tax adjustment from
+      # Must be registered in `config.spree.adjusters` (see
+      # config/initializers/spree.rb): AdjustmentsUpdater runs every registered
+      # non-tax adjuster, persists the running totals, and only then runs the
+      # tax adjuster -- which recomputes each tax adjustment from
       # LineItem#taxable_basis, itself derived from taxable_amount
-      # (= amount + taxable_adjustment_total). Contribute after Tax has run
-      # and the tax figure would still be computed on the undiscounted price.
+      # (= amount + taxable_adjustment_total). Unregistered, the discount never
+      # reaches that total and tax stays on the undiscounted price.
+      #
+      # Position within the adjusters array is not significant: the updater
+      # pulls the tax adjuster out by name and always runs it last.
       #
       # Deliberately NOT modelled on the winner-picking half of
       # Spree::Adjustable::Adjuster::Promotion. That adjuster marks every
@@ -35,12 +38,15 @@ module Spree
 
         private
 
+        # The type filter covers subclassed gateways. ApplyDiscount decides with
+        # `is_a?`, so a store subclassing the gateway would otherwise get
+        # adjustments created that this adjuster ignores -- VAT silently
+        # unfixed, which is the bug this class exists to prevent.
         def bank_transfer_discount_total
           adjustments.
-            where(source_type: 'Spree::PaymentMethod').
             eligible.
-            joins('INNER JOIN spree_payment_methods ON spree_payment_methods.id = spree_adjustments.source_id').
-            where(spree_payment_methods: { type: 'Spree::BankPayments::Gateway' }).
+            where(source_type: 'Spree::PaymentMethod',
+                  source_id: Spree::BankPayments.gateway_scope.select(:id)).
             sum(:amount)
         end
       end

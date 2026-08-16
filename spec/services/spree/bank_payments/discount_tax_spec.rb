@@ -1,5 +1,10 @@
 require 'spec_helper'
 
+# A store may subclass the gateway (extra preferences, a bespoke reconciler).
+# ApplyDiscount decides whether to discount with `is_a?`, which matches
+# subclasses, so every SQL filter in the gem must match them too.
+class SubclassedBankTransferGateway < Spree::BankPayments::Gateway; end
+
 # The discount is applied as one adjustment per line item (not a single
 # order-level adjustment), so it reaches Spree::LineItem#taxable_adjustment_total
 # and therefore actually reduces recorded tax on a tax-inclusive (VAT) store.
@@ -34,16 +39,23 @@ RSpec.describe 'bank-transfer discount and tax' do
 
   def order_with_vat(price: 100.00, quantity: 1)
     order = create(:order_with_line_items, line_items_price: price, shipment_cost: 0)
-    order.line_items.first.update!(quantity: quantity) if quantity != 1
+    # update_columns, not update!: LineItem#update_adjustments recalculates
+    # price from the variant on a quantity change, which would clobber the
+    # factory's line_items_price. `amount` is derived (price * quantity), not a
+    # column, so update_with_updater! picks the new figure up regardless.
+    order.line_items.first.update_columns(quantity: quantity) if quantity != 1
+    order.reload
+    order.update_with_updater!
     apply_inclusive_vat!(order)
     order
   end
 
-  # AdjustmentsUpdater runs the non-tax adjusters, persists their totals, then
-  # runs Tax -- which recomputes from taxable_basis. Registered after Tax, our
-  # contribution lands too late and tax is still computed on the undiscounted
-  # price, so the position in this array is the whole fix.
-  it 'registers the discount adjuster exactly once, before the tax adjuster' do
+  # Being registered is what matters -- unregistered, the line-item discounts
+  # never reach taxable_adjustment_total. Position is NOT load-bearing:
+  # AdjustmentsUpdater pulls the tax adjuster out by name and always runs it
+  # last. The ordering assertion below just pins the cosmetic invariant that
+  # the array reads in execution order.
+  it 'registers the discount adjuster exactly once, ahead of the tax adjuster' do
     names = Spree.adjusters.map(&:name)
 
     expect(names.count('Spree::BankPayments::Adjuster::Discount')).to eq(1)
@@ -73,6 +85,67 @@ RSpec.describe 'bank-transfer discount and tax' do
     order.reload
 
     # 3% off 100.00 => taxable basis 97.00 => included VAT 97 - 97/1.2 = 16.17
+    expect(order.total).to eq(97.00)
+    expect(order.included_tax_total).to eq(16.17)
+  end
+
+  it 'counts and removes the discount for a SUBCLASSED gateway too' do
+    subclassed_method = SubclassedBankTransferGateway.create!(
+      attributes_for(:bank_transfer_gateway).merge(name: 'Subclassed Bank Transfer')
+    )
+    expect(subclassed_method.type).to eq('SubclassedBankTransferGateway')
+
+    order = order_with_vat(price: 100.00)
+    expect(order.included_tax_total).to eq(16.67)
+
+    Spree::BankPayments::ApplyDiscount.call(order: order, payment_method: subclassed_method)
+    order.reload
+
+    # Filtering on an exact `type = 'Spree::BankPayments::Gateway'` would create
+    # these adjustments but never count them: total would still fall to 97.00
+    # while included_tax_total stayed at 16.67 -- VAT silently unfixed.
+    expect(order.all_adjustments.where(source: subclassed_method).sum(:amount)).to eq(-3.00)
+    expect(order.total).to eq(97.00)
+    expect(order.included_tax_total).to eq(16.17)
+
+    # ...and an exact-type filter in remove_existing would orphan them here.
+    Spree::BankPayments::ApplyDiscount.call(order: order, payment_method: create(:credit_card_payment_method))
+    order.reload
+
+    expect(order.all_adjustments.where(source: subclassed_method)).to be_empty
+    expect(order.total).to eq(100.00)
+    expect(order.included_tax_total).to eq(16.67)
+  end
+
+  it 'weights the allocation by price * quantity, not price alone' do
+    order = create(:order_with_line_items, line_items_count: 2, line_items_price: 10.00, shipment_cost: 0)
+    first, second = order.line_items.order(:id).to_a
+    second.update_columns(quantity: 3) # 10.00 and 30.00 => item_total 40.00
+    order.reload
+    order.update_with_updater!
+    order.reload
+    expect(second.reload.amount).to eq(30.00)
+    expect(order.item_total).to eq(40.00)
+
+    Spree::BankPayments::ApplyDiscount.call(order: order, payment_method: payment_method)
+    order.reload
+
+    adjustments = order.all_adjustments.where(source: payment_method)
+    expect(adjustments.sum(:amount)).to eq(-1.20) # 3% of 40.00
+    # Weighted by amount (price * quantity), so 1:3 -- not 1:1 on price.
+    expect(adjustments.find_by(adjustable: first).amount).to eq(-0.30)
+    expect(adjustments.find_by(adjustable: second).amount).to eq(-0.90)
+  end
+
+  it 'reduces included tax on a multi-quantity line item' do
+    order = order_with_vat(price: 25.00, quantity: 4) # item_total 100.00
+
+    expect(order.item_total).to eq(100.00)
+    expect(order.included_tax_total).to eq(16.67)
+
+    Spree::BankPayments::ApplyDiscount.call(order: order, payment_method: payment_method)
+    order.reload
+
     expect(order.total).to eq(97.00)
     expect(order.included_tax_total).to eq(16.17)
   end

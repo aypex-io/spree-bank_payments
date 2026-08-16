@@ -263,9 +263,16 @@ auto-apply's exact-equality check diverts every payment to the manual queue.
 
 Line-item rather than order-level so the discount reaches
 `taxable_adjustment_total` and **recorded tax falls with it** on a tax-inclusive
-(VAT) store. `Spree::BankPayments::Adjuster::Discount`, registered ahead of
-`Spree::Adjustable::Adjuster::Tax` in `config.spree.adjusters`, folds these
-amounts into that total before tax is recomputed from `LineItem#taxable_basis`.
+(VAT) store. `Spree::BankPayments::Adjuster::Discount`, registered in
+`config.spree.adjusters`, folds these amounts into that total before tax is
+recomputed from `LineItem#taxable_basis`. Registration is what matters; position
+in the array is not — `AdjustmentsUpdater` selects the tax adjuster by name and
+always runs it last.
+
+All type filters (the adjuster, `remove_existing`, `settled_by_bank_transfer?`)
+match gateway **subclasses**, agreeing with the `is_a?` test that decides whether
+to discount in the first place. A mismatch would create adjustments that are
+never tax-counted and never removed.
 
 Sourcing from the payment method rather than a promotion action prevents Spree's
 promo recalculation from clearing it, and keeps the discount out of
