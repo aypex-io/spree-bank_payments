@@ -28,6 +28,48 @@ RSpec.describe AypexBankTransfer::ExpireSessionsJob do
     end
   end
 
+  # C2. The customer abandoned the bank transfer and paid by card. The
+  # session is still pending and now past expiry, and order.allow_cancel? is
+  # true for a paid, unshipped order -- so without the guard this job
+  # cancels and restocks an order that has been paid in full.
+  context 'when the order has already been paid another way' do
+    before { allow_any_instance_of(AypexBankTransfer::Gateway).to receive(:reconciler_healthy?).and_return(true) }
+
+    # Totals pinned so a single card payment lands the order exactly on
+    # 'paid' -- the default factory totals leave it in credit_owed, which
+    # would prove a different thing.
+    let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
+
+    before do
+      create(:payment, order: order, amount: order.total, state: 'completed')
+      order.update_with_updater!
+      expect(order.reload.payment_state).to eq('paid')
+    end
+
+    it 'does not cancel the paid order' do
+      described_class.perform_now
+
+      order.reload
+      expect(order.state).not_to eq('canceled')
+      expect(order.payment_state).to eq('paid')
+    end
+
+    it 'closes the superseded session as canceled rather than expiring it' do
+      described_class.perform_now
+
+      expect(session.reload.status).to eq('canceled')
+    end
+
+    it 'does not publish the customer-facing expiry event' do
+      allow(Spree::Events).to receive(:publish).and_call_original
+
+      described_class.perform_now
+
+      expect(Spree::Events).not_to have_received(:publish).with('bank_transfer.expired', anything)
+      expect(Spree::Events).to have_received(:publish).with('bank_transfer.session_superseded', anything)
+    end
+  end
+
   context 'when the reconciler is unhealthy' do
     before { allow_any_instance_of(AypexBankTransfer::Gateway).to receive(:reconciler_healthy?).and_return(false) }
 

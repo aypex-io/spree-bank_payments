@@ -44,6 +44,25 @@ module AypexBankTransfer
         where(payment_method_id: payment_method.id).
         where(expires_at: ...Time.current).
         find_each do |session|
+          # C2: nothing else closes a bank-transfer session when the order
+          # settles by another means. A customer who abandons the transfer
+          # and pays by card leaves a pending, past-expiry session behind;
+          # `order.allow_cancel?` is true for a paid, unshipped order, so
+          # without this guard the job cancels and restocks an order that
+          # has been paid in full. The session is closed as `canceled`
+          # rather than `expired`: in this gem `expired` means "the customer
+          # never paid, we cancelled the order and released the stock" and
+          # publishes the customer-facing bank_transfer.expired event.
+          # Nothing of the sort happened here -- the session is simply no
+          # longer needed, which is exactly what `canceled` means in
+          # Spree::PaymentSession's state machine, and it publishes
+          # payment_session.canceled instead so no cancellation-shaped event
+          # escapes for a live order.
+          if settled_elsewhere?(session)
+            close_superseded(session)
+            next
+          end
+
           # cancel_order runs first, session.expire! last: Spree's state
           # machine publishes `payment_session.expired` synchronously from
           # inside session.expire!, so it must be the final statement in the
@@ -57,6 +76,19 @@ module AypexBankTransfer
 
           Spree::Events.publish('bank_transfer.expired', session.notification_payload)
         end
+    end
+
+    # `credit_owed` counts as settled too: the order has been paid, just for
+    # more than it was owed. Cancelling and restocking it would be no less
+    # wrong than cancelling a cleanly paid one.
+    def settled_elsewhere?(session)
+      %w[paid credit_owed].include?(session.order&.payment_state)
+    end
+
+    def close_superseded(session)
+      session.cancel!
+
+      Spree::Events.publish('bank_transfer.session_superseded', session.notification_payload)
     end
 
     def cancel_order(order)

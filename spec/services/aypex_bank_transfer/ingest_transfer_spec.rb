@@ -58,6 +58,23 @@ RSpec.describe AypexBankTransfer::IngestTransfer do
       expect(ingest(reference: ' tkf/7q4x2 ')).to be_applied
     end
 
+    # C2. The customer abandoned the transfer, paid by card, then sent the
+    # bank transfer anyway from the emailed instructions. It exact-matches
+    # the still-open session; auto-applying would credit a second payment
+    # and leave real money to refund. That is a human decision.
+    it 'refuses to auto-apply when the order has already been paid another way' do
+      create(:payment, order: order, amount: order.total, state: 'completed')
+      order.update_with_updater!
+      expect(order.reload.payment_state).to eq('paid')
+
+      transfer = ingest
+
+      expect(transfer.state).to eq('unmatched')
+      expect(transfer.payment_session).to be_nil
+      expect(session.reload.status).to eq('pending')
+      expect(order.reload.payments.completed.count).to eq(1)
+    end
+
     it 'matches despite Crockford-ambiguous glyphs' do
       # The session reference contains digits 0 and 1; the customer typed the
       # letters O and I. Folding both sides makes them the same reference.

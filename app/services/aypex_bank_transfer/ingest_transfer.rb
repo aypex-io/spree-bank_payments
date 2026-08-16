@@ -54,6 +54,14 @@ module AypexBankTransfer
       return nil unless session.amount == transfer.amount
       return nil unless session.currency == transfer.currency
 
+      # C2: the customer may have abandoned the transfer, paid by card, and
+      # then sent the bank transfer anyway from the emailed instructions --
+      # it would exact-match the still-open session and auto-apply a *second*
+      # payment, leaving the order in credit_owed with real money to refund.
+      # A second payment on a settled order is a human decision, so this
+      # queues for the hand-match screen instead of applying itself.
+      return nil if %w[paid credit_owed].include?(session.order&.payment_state)
+
       session
     end
   end
