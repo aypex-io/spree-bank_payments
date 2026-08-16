@@ -37,7 +37,7 @@ module AypexBankTransfer
       # becomes a harmless no-op rather than a second discount.
       ApplyDiscount.call(order: order, payment_method: self)
 
-      ::Spree::PaymentSessions::BankTransfer.create!(
+      session = ::Spree::PaymentSessions::BankTransfer.create!(
         order: order,
         payment_method: self,
         amount: amount || order.total_minus_store_credits,
@@ -46,6 +46,10 @@ module AypexBankTransfer
         external_data: external_data,
         expires_at: preferred_expiry_days.to_i.days.from_now
       )
+
+      Spree::Events.publish('bank_transfer.instructions_ready', session.notification_payload)
+
+      session
     end
 
     def auto_capture?

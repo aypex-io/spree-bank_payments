@@ -1,5 +1,6 @@
 require 'spree_core'
 require 'aypex_bank_transfer/version'
+require 'aypex_bank_transfer/configuration'
 require 'aypex_bank_transfer/engine'
 
 module AypexBankTransfer

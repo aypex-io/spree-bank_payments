@@ -1,5 +1,22 @@
 Rails.application.config.after_initialize do
   Rails.application.config.spree.payment_methods << AypexBankTransfer::Gateway
+
+  # Spree::Events needs no up-front event registration — publishing a name is
+  # enough, and subscribers match on string patterns (wildcards supported).
+  # This block lives in `after_initialize`, which runs once at boot, so these
+  # `subscribe` calls happen exactly once per process — they would double up
+  # if moved into `to_prepare`, which reruns on every code reload.
+  unless AypexBankTransfer::Config.disable_default_mailer
+    Spree::Events.subscribe('bank_transfer.instructions_ready') do |event|
+      AypexBankTransfer::InstructionsMailer.
+        instructions(event.payload[:payment_session_id]).deliver_later
+    end
+
+    Spree::Events.subscribe('bank_transfer.reminder_due') do |event|
+      AypexBankTransfer::InstructionsMailer.
+        reminder(event.payload[:payment_session_id]).deliver_later
+    end
+  end
 end
 
 # Reconciler registration lives in `to_prepare`, not `after_initialize`, because

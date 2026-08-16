@@ -1,0 +1,20 @@
+<p><%= Spree.t('bank_transfer.pay_within', days: ((@session.expires_at.to_date - Date.current).to_i)) %></p>
+
+<h1><%= Spree.t('bank_transfer.reference') %>: <%= @session.reference %></h1>
+
+<p><%= Spree.t('bank_transfer.reference_help') %></p>
+
+<p>
+  <strong><%= Spree.t('bank_transfer.amount_to_transfer') %>:</strong>
+  <%= @session.money.to_s %>
+</p>
+
+<ul>
+  <li><%= @bank_details[:account_name] %></li>
+  <% if @bank_details[:iban].present? %><li>IBAN: <%= @bank_details[:iban] %></li><% end %>
+  <% if @bank_details[:bic].present? %><li>BIC: <%= @bank_details[:bic] %></li><% end %>
+  <% if @bank_details[:sort_code].present? %><li>Sort code: <%= @bank_details[:sort_code] %></li><% end %>
+  <% if @bank_details[:account_number].present? %><li>Account number: <%= @bank_details[:account_number] %></li><% end %>
+</ul>
+
+<p><%= Spree.t('bank_transfer.dispatch_note') %></p>
