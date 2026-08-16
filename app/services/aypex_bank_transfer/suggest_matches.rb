@@ -20,8 +20,18 @@ module AypexBankTransfer
 
     attr_reader :transfer
 
+    # Scoped to the transfer's own gateway. Since Spree::PaymentMethod
+    # belongs to exactly one store, this also pins suggestions to the
+    # transfer's store -- without it, another store's order numbers and
+    # amounts would render in this store's admin queue (and the "apply"
+    # buttons would then bounce off the store guard in the controller with
+    # a confusing "could not be found"). A transfer with no known gateway
+    # (payment_method_id nil) gets no suggestions rather than an unscoped,
+    # cross-store guess.
     def open_sessions
-      ::Spree::PaymentSessions::BankTransfer.open
+      return ::Spree::PaymentSessions::BankTransfer.none if transfer.payment_method_id.blank?
+
+      ::Spree::PaymentSessions::BankTransfer.open.where(payment_method_id: transfer.payment_method_id)
     end
 
     def amount_matches

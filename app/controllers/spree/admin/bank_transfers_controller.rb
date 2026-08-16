@@ -28,6 +28,19 @@ module Spree
           return redirect_to spree.admin_bank_transfers_path
         end
 
+        if gateway_mismatch?(payment_session)
+          flash[:error] = 'That transfer was received on a different bank-transfer gateway ' \
+                           'and cannot be applied to this session.'
+          return redirect_to spree.admin_bank_transfers_path
+        end
+
+        if money_mismatch?(payment_session) && !confirmed_mismatch?
+          flash[:error] = "Amount/currency mismatch: the transfer is #{@transfer.money}, " \
+                           "the session expects #{payment_session.money}. " \
+                           'Confirm to apply anyway.'
+          return redirect_to spree.admin_bank_transfers_path
+        end
+
         AypexBankTransfer::ApplyTransfer.call(
           transfer: @transfer,
           payment_session: payment_session,
@@ -39,7 +52,18 @@ module Spree
       end
 
       def ignore
-        @transfer.update!(state: 'ignored', ignored_reason: params[:reason])
+        if @transfer.applied?
+          flash[:error] = 'That transfer has already been applied and cannot be ignored.'
+          return redirect_to spree.admin_bank_transfers_path
+        end
+
+        reason = params[:reason].to_s.strip
+        if reason.blank?
+          flash[:error] = 'A reason is required to ignore a transfer.'
+          return redirect_to spree.admin_bank_transfers_path
+        end
+
+        @transfer.update!(state: 'ignored', ignored_reason: reason)
 
         flash[:success] = 'Transfer ignored.'
         redirect_to spree.admin_bank_transfers_path
@@ -61,6 +85,34 @@ module Spree
           joins(:order).
           where(spree_orders: { store_id: current_store.id }).
           find_by(id: id)
+      end
+
+      # The auto-apply path (IngestTransfer) guards on payment_method_id at
+      # the query level, since it starts from a known gateway. The admin
+      # path starts from a payment_session_id typed by a human, so it has
+      # to check the reverse direction explicitly: a transfer received on
+      # one bank-transfer gateway (e.g. a different `provider`) must not be
+      # applicable to a session belonging to another gateway in the same
+      # store. A transfer with no known payment_method (legacy/manual data)
+      # can't be checked and is allowed through -- that's an existing gap,
+      # not a new one.
+      def gateway_mismatch?(payment_session)
+        @transfer.payment_method_id.present? &&
+          @transfer.payment_method_id != payment_session.payment_method_id
+      end
+
+      # A human is allowed to hand-match a transfer to a session for a
+      # different amount/currency (typos happen, partial payments happen)
+      # but never silently: find_or_create_payment! stamps the *session's*
+      # amount onto the payment, so an unconfirmed mismatch would credit
+      # the order for whatever the session asked for, not what actually
+      # arrived.
+      def money_mismatch?(payment_session)
+        @transfer.amount != payment_session.amount || @transfer.currency != payment_session.currency
+      end
+
+      def confirmed_mismatch?
+        ActiveModel::Type::Boolean.new.cast(params[:confirm_mismatch])
       end
     end
   end

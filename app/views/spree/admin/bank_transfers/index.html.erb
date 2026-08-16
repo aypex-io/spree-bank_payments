@@ -20,9 +20,17 @@
           <td><code><%= transfer.reference_raw.presence || '—' %></code></td>
           <td>
             <% Array(@suggestions[transfer.id]).each do |suggestion| %>
+              <% mismatched = suggestion.amount != transfer.amount || suggestion.currency != transfer.currency %>
               <%= form_tag spree.apply_admin_bank_transfer_path(transfer), method: :put, class: 'd-inline' do %>
                 <%= hidden_field_tag :payment_session_id, suggestion.id %>
-                <%= submit_tag "#{suggestion.order.number} — #{suggestion.money}", class: 'btn btn-sm btn-primary' %>
+                <% if mismatched %>
+                  <span class="badge bg-warning text-dark">Amount/currency mismatch — session expects <%= suggestion.money %></span>
+                  <%= hidden_field_tag :confirm_mismatch, '1' %>
+                  <%= submit_tag "Apply anyway to #{suggestion.order.number}", class: 'btn btn-sm btn-warning',
+                        data: { confirm: "Transfer is #{transfer.money} but #{suggestion.order.number} expects #{suggestion.money}. Apply anyway?" } %>
+                <% else %>
+                  <%= submit_tag "#{suggestion.order.number} — #{suggestion.money}", class: 'btn btn-sm btn-primary' %>
+                <% end %>
               <% end %>
             <% end %>
             <% if Array(@suggestions[transfer.id]).empty? %>—<% end %>
@@ -38,5 +46,5 @@
     </tbody>
   </table>
 
-  <%== pagy_nav(@pagy) %>
+  <%== @pagy.series_nav %>
 <% end %>

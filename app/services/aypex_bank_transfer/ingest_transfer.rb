@@ -30,7 +30,8 @@ module AypexBankTransfer
         payer_name: data.payer_name,
         occurred_at: data.occurred_at,
         raw_payload: data.raw || {},
-        state: 'unmatched'
+        state: 'unmatched',
+        payment_method_id: payment_method.id
       ).find_or_create_by!(
         provider: data.provider,
         provider_transaction_id: data.provider_transaction_id

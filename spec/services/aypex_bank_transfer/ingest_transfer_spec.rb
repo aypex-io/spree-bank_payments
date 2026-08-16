@@ -49,6 +49,7 @@ RSpec.describe AypexBankTransfer::IngestTransfer do
 
       expect(transfer).to be_applied
       expect(transfer.payment_session).to eq(session)
+      expect(transfer.payment_method_id).to eq(payment_method.id)
       expect(session.reload.status).to eq('completed')
       expect(order.reload.payment_state).to eq('paid')
     end

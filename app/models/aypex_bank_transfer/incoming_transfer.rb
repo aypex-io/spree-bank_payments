@@ -8,6 +8,11 @@ module AypexBankTransfer
 
     belongs_to :payment_session, class_name: 'Spree::PaymentSession', optional: true
     belongs_to :applied_by, class_name: Spree.admin_user_class.to_s, optional: true
+    # Nullable: older/manually-created transfers may not know their gateway.
+    # Set by IngestTransfer on creation; used to keep the admin hand-match
+    # queue from applying a transfer received on one bank-transfer gateway
+    # to a session belonging to a different one.
+    belongs_to :payment_method, class_name: 'Spree::PaymentMethod', optional: true
 
     validates :provider, :provider_transaction_id, :amount, :currency, :occurred_at, presence: true
     validates :provider_transaction_id, uniqueness: { scope: :provider }

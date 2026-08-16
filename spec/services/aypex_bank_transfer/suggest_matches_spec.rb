@@ -4,7 +4,8 @@ RSpec.describe AypexBankTransfer::SuggestMatches do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:transfer) do
     create(:bank_transfer_incoming_transfer,
-           amount: 25.00, currency: 'GBP', reference_raw: 'GARBAGE', payer_name: 'Jane Doe')
+           amount: 25.00, currency: 'GBP', reference_raw: 'GARBAGE', payer_name: 'Jane Doe',
+           payment_method_id: payment_method.id)
   end
 
   it 'ranks an exact amount and currency match first' do
@@ -44,5 +45,20 @@ RSpec.describe AypexBankTransfer::SuggestMatches do
                    payment_method: payment_method, amount: 25.00, currency: 'GBP')
 
     expect(described_class.new(transfer: transfer).call).to include(match)
+  end
+
+  it 'never suggests a session belonging to another gateway/store' do
+    other_payment_method = create(:bank_transfer_gateway)
+    other_session = create(:bank_transfer_payment_session,
+                           payment_method: other_payment_method, amount: 25.00, currency: 'GBP')
+
+    expect(described_class.new(transfer: transfer).call).not_to include(other_session)
+  end
+
+  it 'returns no suggestions when the transfer has no known payment method' do
+    transfer.update_column(:payment_method_id, nil)
+    create(:bank_transfer_payment_session, payment_method: payment_method, amount: 25.00, currency: 'GBP')
+
+    expect(described_class.new(transfer: transfer).call).to eq([])
   end
 end
