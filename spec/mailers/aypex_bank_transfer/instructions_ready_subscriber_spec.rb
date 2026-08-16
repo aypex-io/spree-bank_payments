@@ -51,12 +51,20 @@ RSpec.describe 'AypexBankTransfer default mailer event subscription', type: :mai
     it 'does not stack duplicate subscriptions across repeated reloads' do
       3.times { Rails.application.reloader.prepare! }
 
-      expect(
-        Spree::Events.registry.subscriptions_for('bank_transfer.instructions_ready').size
-      ).to eq(1)
-      expect(
-        Spree::Events.registry.subscriptions_for('bank_transfer.reminder_due').size
-      ).to eq(1)
+      # Count subscriptions registered under our *exact* pattern only, not
+      # `subscriptions_for` (which also matches wildcard subscribers -- e.g.
+      # spree_api's Spree::WebhookEventSubscriber subscribes to '*' and
+      # legitimately matches every event, including ours, whenever spree_api
+      # is loaded transitively via spree_admin). That wildcard subscriber is
+      # registered exactly once by spree_core's own to_prepare, so it would
+      # never stack either, but it isn't what this example is about --
+      # this example is only about OUR subscribe_once guard.
+      exact_pattern_count = lambda do |pattern|
+        Spree::Events.registry.all_subscriptions.count { |s| s.pattern == pattern }
+      end
+
+      expect(exact_pattern_count.call('bank_transfer.instructions_ready')).to eq(1)
+      expect(exact_pattern_count.call('bank_transfer.reminder_due')).to eq(1)
 
       # A duplicate subscription would enqueue the same mail twice per
       # publish; have_enqueued_mail defaults to asserting exactly once.
