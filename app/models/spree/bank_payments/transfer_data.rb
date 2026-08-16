@@ -11,10 +11,12 @@ module Spree
       :reference,
       :payer_name,
       :occurred_at,
-      :raw
+      :raw,
+      :provider_account_id
     ) do
-      def initialize(payer_name: nil, reference: nil, raw: {}, **rest)
-        super(payer_name: payer_name, reference: reference, raw: raw, **rest)
+      def initialize(payer_name: nil, reference: nil, raw: {}, provider_account_id: nil, **rest)
+        super(payer_name: payer_name, reference: reference, raw: raw,
+              provider_account_id: provider_account_id, **rest)
       end
     end
   end

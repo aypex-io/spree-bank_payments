@@ -70,4 +70,30 @@ RSpec.describe Spree::BankPayments::TransferData do
     expect(updated).not_to eq(transfer)
     expect(updated).to be_a(described_class)
   end
+
+  it 'still constructs without provider_account_id, as a 5.1.1 provider would' do
+    data = described_class.new(
+      provider: 'x', provider_transaction_id: 'y', amount: 1, currency: 'GBP',
+      occurred_at: Time.current
+    )
+
+    expect(data.provider_account_id).to be_nil
+  end
+
+  it 'accepts provider_account_id and preserves it through #with' do
+    transfer = described_class.new(
+      provider: 'manual',
+      provider_transaction_id: 'txn_123',
+      amount: 100,
+      currency: 'USD',
+      occurred_at: occurred_at,
+      provider_account_id: 'acc-1'
+    )
+
+    expect(transfer.provider_account_id).to eq('acc-1')
+
+    updated = transfer.with(amount: 200)
+
+    expect(updated.provider_account_id).to eq('acc-1')
+  end
 end

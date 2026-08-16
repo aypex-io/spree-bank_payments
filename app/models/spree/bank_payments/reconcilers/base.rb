@@ -50,6 +50,14 @@ module Spree
         def configured?
           raise NotImplementedError, "#{self.class} must implement #configured?"
         end
+
+        # Accounts this provider can see, for the admin sync flow.
+        # Providers that cannot enumerate accounts return [].
+        #
+        # @return [Array<Spree::BankPayments::AccountData>]
+        def sync_accounts
+          []
+        end
       end
     end
   end

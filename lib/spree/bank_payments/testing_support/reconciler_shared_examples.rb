@@ -33,6 +33,13 @@ RSpec.shared_examples 'a bank transfer reconciler' do
   it 'answers #configured? with a boolean' do
     expect([true, false]).to include(reconciler.configured?)
   end
+
+  it 'returns an array of AccountData from #sync_accounts' do
+    result = reconciler.sync_accounts
+
+    expect(result).to be_an(Array)
+    expect(result).to all(be_a(Spree::BankPayments::AccountData))
+  end
 end
 
 # Provider gems MUST include this in addition to the group above. The base group

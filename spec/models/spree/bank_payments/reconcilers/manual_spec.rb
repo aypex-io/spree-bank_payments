@@ -14,6 +14,10 @@ RSpec.describe Spree::BankPayments::Reconcilers::Manual do
     expect(described_class.new(payment_method: payment_method).poll(since: 1.day.ago)).to eq([])
   end
 
+  it 'syncs no accounts' do
+    expect(described_class.new(payment_method: payment_method).sync_accounts).to eq([])
+  end
+
   describe 'registry survives a Zeitwerk reload' do
     # The registration lives in `config.to_prepare` (see
     # config/initializers/spree.rb) specifically because `Reconcilers::Base`

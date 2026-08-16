@@ -19,6 +19,12 @@ module Spree
         def configured?
           true
         end
+
+        # Manual stores create accounts by hand in the admin; there is
+        # nothing to sync.
+        def sync_accounts
+          []
+        end
       end
     end
   end
