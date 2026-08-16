@@ -15,11 +15,11 @@ module Spree
 
       def index
         @pagy, @transfers = pagy(
-          SpreeBankTransfer::IncomingTransfer.unmatched.order(occurred_at: :desc)
+          SpreeBankPayments::IncomingTransfer.unmatched.order(occurred_at: :desc)
         )
 
         @suggestions = @transfers.each_with_object({}) do |transfer, acc|
-          acc[transfer.id] = SpreeBankTransfer::SuggestMatches.new(transfer: transfer).call
+          acc[transfer.id] = SpreeBankPayments::SuggestMatches.new(transfer: transfer).call
         end
 
         # Set only by #apply's mismatch refusal (see I3). Identifies the one
@@ -65,13 +65,13 @@ module Spree
         # that two genuinely distinct but byte-identical transfers on the
         # same day collapse into one -- rare, and far safer than the
         # alternative of crediting an order twice.
-        already_recorded = SpreeBankTransfer::IncomingTransfer.exists?(
+        already_recorded = SpreeBankPayments::IncomingTransfer.exists?(
           provider: MANUAL_PROVIDER, provider_transaction_id: transaction_id
         )
 
-        transfer = SpreeBankTransfer::IngestTransfer.new(
+        transfer = SpreeBankPayments::IngestTransfer.new(
           payment_method: payment_method,
-          transfer_data: SpreeBankTransfer::TransferData.new(
+          transfer_data: SpreeBankPayments::TransferData.new(
             provider: MANUAL_PROVIDER,
             provider_transaction_id: transaction_id,
             amount: BigDecimal(@transfer_form[:amount].to_s),
@@ -132,7 +132,7 @@ module Spree
           )
         end
 
-        SpreeBankTransfer::ApplyTransfer.call(
+        SpreeBankPayments::ApplyTransfer.call(
           transfer: @transfer,
           payment_session: payment_session,
           applied_by: try_spree_current_user
@@ -163,13 +163,13 @@ module Spree
       private
 
       def load_transfer
-        @transfer = SpreeBankTransfer::IncomingTransfer.find(params[:id])
+        @transfer = SpreeBankPayments::IncomingTransfer.find(params[:id])
       end
 
       # Same store guard as the apply path: an admin must not be able to
       # record a transfer against another store's gateway.
       def load_recordable_payment_methods
-        @payment_methods = SpreeBankTransfer::Gateway.where(store_id: current_store.id).order(:name).to_a
+        @payment_methods = SpreeBankPayments::Gateway.where(store_id: current_store.id).order(:name).to_a
       end
 
       def blank_transfer_form
@@ -230,7 +230,7 @@ module Spree
             payment_method.id,
             BigDecimal(form[:amount].to_s).to_s('F'),
             form[:currency].to_s.strip.upcase,
-            SpreeBankTransfer::IncomingTransfer.normalize_reference(form[:reference]),
+            SpreeBankPayments::IncomingTransfer.normalize_reference(form[:reference]),
             form[:payer_name].to_s.strip.downcase,
             parse_occurred_at(form[:occurred_at]).to_date.iso8601
           ].join('|')

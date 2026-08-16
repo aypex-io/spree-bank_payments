@@ -1,4 +1,4 @@
-# SpreeBankTransfer — design spec
+# SpreeBankPayments — design spec
 
 **Date:** 2026-08-15
 **Status:** Approved, ready for implementation planning
@@ -24,11 +24,11 @@ payments. The reconciliation half is the novel work.
 
 Two gems under `aypex-io`:
 
-- **`spree_bank_transfer`** — bank-agnostic core. Payment method, payment
+- **`spree_bank_payments`** — bank-agnostic core. Payment method, payment
   session, reference generation, discount adjustment, expiry job and health
   gate, admin queue, `Reconcilers::Base` contract, and a `Manual` reconciler.
   Fully usable standalone with hand-marked payments.
-- **`spree_bank_transfer_revolut`** — Revolut Business API reconciler,
+- **`spree_bank_payments_revolut`** — Revolut Business API reconciler,
   API client, token handling, webhook signature verification.
 
 Two gems rather than one adapter-in-core, chosen deliberately to establish the
@@ -36,13 +36,16 @@ foundation for further banking providers. The cost is that `Reconcilers::Base`
 is a published cross-gem contract: changing it requires a coordinated release.
 The interface is kept deliberately narrow to limit that exposure.
 
-Naming: the repo and Ruby module are `spree_bank_transfer` / `SpreeBankTransfer`,
+Naming: the repo and Ruby module are `spree_bank_payments` / `SpreeBankPayments`,
 carrying the community `spree_` prefix used by `spree_stripe` and
-`spree_paypal_checkout`. The RubyGems name is currently held by vinsol's
-dormant `spree_bank_transfer` (v2.0.4, single release, published November
-2013, ~4,967 downloads); publishing under that name requires an adoption
-request to RubyGems, which is the intended route. Installation is from
-GitHub in the meantime, matching the `spree_paypal_checkout` pattern.
+`spree_paypal_checkout`. `spree_bank_transfer` on RubyGems is held by the
+account `nexon` (v2.0.4, single release, published November 2013, ~4,967
+downloads); RubyGems has since removed its gem-adoption feature and its
+policy is not to reassign ownership absent proven harm, so that name is
+unobtainable. `spree_bank_payments` was chosen as a free `spree_`-prefixed
+alternative, verified available in both underscore and hyphen spellings.
+Installation is from GitHub for now, matching the `spree_paypal_checkout`
+pattern.
 
 Target: Spree 5.6, Rails 8.1, Ruby 4.0.
 
@@ -76,7 +79,7 @@ Target: Spree 5.6, Rails 8.1, Ruby 4.0.
 state machine, `find_or_create_payment!`, and per-order uniqueness of
 `external_id`. `external_id` holds the payment reference. No new table.
 
-**`spree_bank_transfer_incoming_transfers`** — one row per transfer observed,
+**`spree_bank_payments_incoming_transfers`** — one row per transfer observed,
 matched or not. Serves as audit log, admin queue, and replay guard.
 
 | Column | Notes |
@@ -93,7 +96,7 @@ matched or not. Serves as audit log, admin queue, and replay guard.
 | `applied_by_id`, `applied_at` | Audit trail for manual application |
 | `raw_payload` | jsonb |
 
-**`spree_bank_transfer_reconciler_states`** — one row per payment method:
+**`spree_bank_payments_reconciler_states`** — one row per payment method:
 `last_successful_run_at`, `last_error`, `consecutive_failures`. Held in
 Postgres, not Redis: the health gate must survive a cache flush, because a
 wrongly-empty cache would silently re-enable auto-cancel.
@@ -341,7 +344,7 @@ than it saves.
 This spec is too large for a single implementation plan and splits cleanly along
 the gem boundary. Each phase gets its own plan.
 
-**Phase 1 — `spree_bank_transfer`.** Payment method and preferences, payment
+**Phase 1 — `spree_bank_payments`.** Payment method and preferences, payment
 session subclass, reference generation, discount adjustment, `IncomingTransfer`
 and `ReconcilerState` models, `Reconcilers::Base` plus `Manual`, the shared
 example group, expiry job and health gate, notification events, all three admin
@@ -351,7 +354,7 @@ feed `IngestTransfer`, and the `Manual` reconciler renders them harmless no-ops.
 Ships a complete, useful product on its own: a store can accept bank transfer
 and mark payments received by hand.
 
-**Phase 2 — `spree_bank_transfer_revolut`.** Revolut client with lazy token
+**Phase 2 — `spree_bank_payments_revolut`.** Revolut client with lazy token
 refresh, webhook signature verification, the reconciler implementation run
 against Phase 1's shared example group, and the consent-expiry alert job. Phase
 2 supplies an adapter; it adds no orchestration.
@@ -369,9 +372,9 @@ Phase 2 consumes a published interface.
    `developer.revolut.com` blocks automated fetching, so this needs a manual
    read of the docs.
 3. ~~Confirm the gem name is available on RubyGems.~~ **Updated 2026-08-16** —
-   the repo and module are `spree_bank_transfer`/`SpreeBankTransfer` (see
-   Scope). The RubyGems name itself is still vinsol's; pursue an adoption
-   request before attempting to publish.
+   `spree_bank_transfer` is unobtainable (see Naming, above); the repo and
+   module were renamed to `spree_bank_payments`/`SpreeBankPayments`, verified
+   free on RubyGems.
 
 ## References
 

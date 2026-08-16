@@ -1,4 +1,4 @@
-# spree_bank_transfer
+# spree_bank_payments
 
 Bank transfer checkout for Spree 5.6+, with pluggable reconciliation of
 incoming payments.
@@ -10,12 +10,12 @@ PostgreSQL. The gem uses `jsonb`, partial unique indexes, and `pg_trgm`.
 ## Installation
 
 ```ruby
-gem 'spree_bank_transfer', github: 'aypex-io/spree_bank_transfer'
+gem 'spree_bank_payments', github: 'aypex-io/spree_bank_payments'
 ```
 
 ```bash
 bundle install
-bin/rails g spree_bank_transfer:install
+bin/rails g spree_bank_payments:install
 ```
 
 The generator copies the migrations and then asks whether to run them. Pass
@@ -27,7 +27,7 @@ Add a Bank Transfer payment method in the Spree admin and set:
 
 | Preference | Purpose |
 |---|---|
-| `reconciler` | `manual` by default; `revolut` with `spree_bank_transfer_revolut` installed |
+| `reconciler` | `manual` by default; `revolut` with `spree_bank_payments_revolut` installed |
 | `reference_prefix` | Prefix on generated references, e.g. `TKF-` |
 | `expiry_days` | Days before an unpaid order is cancelled and restocked |
 | `discount_percent` | Percentage off `item_total` for paying by transfer |
@@ -67,13 +67,13 @@ at `/admin/bank_transfers`. That screen is the operational heart of the gem:
 
 ### The order panel partial
 
-`spree_bank_transfer/admin/_order_panel` renders the bank-transfer state for
+`spree_bank_payments/admin/_order_panel` renders the bank-transfer state for
 a single order — reference, amount, status, expiry, and the matched transfer
 if there is one. The gem does **not** inject it anywhere; render it from your
 admin order view where it makes sense for your store:
 
 ```erb
-<%= render 'spree_bank_transfer/admin/order_panel', order: @order %>
+<%= render 'spree_bank_payments/admin/order_panel', order: @order %>
 ```
 
 ## Scheduling
@@ -83,9 +83,9 @@ expires and no reminders send:
 
 | Job | Frequency | Purpose |
 |---|---|---|
-| `SpreeBankTransfer::ExpireSessionsJob` | Hourly | Cancels and restocks orders whose payment window has lapsed |
-| `SpreeBankTransfer::SendRemindersJob` | Daily | Sends payment reminders as the expiry deadline approaches |
-| `SpreeBankTransfer::PollJob` | Every `poll_interval_minutes` (default 15) | Polls the configured reconciler for new transfers; a successful run is what arms the health gate below |
+| `SpreeBankPayments::ExpireSessionsJob` | Hourly | Cancels and restocks orders whose payment window has lapsed |
+| `SpreeBankPayments::SendRemindersJob` | Daily | Sends payment reminders as the expiry deadline approaches |
+| `SpreeBankPayments::PollJob` | Every `poll_interval_minutes` (default 15) | Polls the configured reconciler for new transfers; a successful run is what arms the health gate below |
 
 Wire all three into your scheduler (`sidekiq-cron`, `whenever`, etc.) as part
 of installing this gem, not as an afterthought.
@@ -139,7 +139,7 @@ A bundled mailer subscribes to `instructions_ready` and `reminder_due` as one
 optional subscriber among possibly several. Disable it with:
 
 ```ruby
-SpreeBankTransfer::Config.disable_default_mailer = true
+SpreeBankPayments::Config.disable_default_mailer = true
 ```
 
 Stores that deliver mail another way — for example a storefront webhook
@@ -168,7 +168,7 @@ accounting.
 
 ## The instructions partial ships no CSS
 
-`spree_bank_transfer/_order_instructions` renders the payment reference and
+`spree_bank_payments/_order_instructions` renders the payment reference and
 bank details with no styling of its own. Making the reference visually
 prominent — the single most impactful thing you can do for match rates — is
 the host store's responsibility. Customers who don't notice or don't copy
@@ -178,10 +178,10 @@ important line on the page, because for a bank-transfer checkout, it is.
 
 ## Writing a reconciler
 
-Subclass `SpreeBankTransfer::Reconcilers::Base` and implement the four
+Subclass `SpreeBankPayments::Reconcilers::Base` and implement the four
 contract methods:
 
-- `#poll(since:)` — returns an `Array<SpreeBankTransfer::TransferData>`
+- `#poll(since:)` — returns an `Array<SpreeBankPayments::TransferData>`
 - `#parse_webhook(raw_body, headers)` — returns `TransferData` or `nil`
 - `#healthy?` — boolean; feeds the health gate above
 - `#configured?` — boolean; whether credentials/settings are complete
@@ -189,13 +189,13 @@ contract methods:
 Register it:
 
 ```ruby
-SpreeBankTransfer::Reconcilers::Base.register('my_bank', MyBank::Reconciler)
+SpreeBankPayments::Reconcilers::Base.register('my_bank', MyBank::Reconciler)
 ```
 
 and run **both** shared example groups against it — not just the first one:
 
 ```ruby
-require 'spree_bank_transfer/testing_support/reconciler_shared_examples'
+require 'spree_bank_payments/testing_support/reconciler_shared_examples'
 
 RSpec.describe MyBank::Reconciler do
   let(:payment_method) { create(:bank_transfer_gateway) }
