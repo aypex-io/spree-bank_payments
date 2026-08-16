@@ -16,15 +16,15 @@ end
 
 desc 'Generates a dummy app for testing'
 task :test_app do
-  ENV['LIB_NAME'] = 'aypex_bank_transfer'
+  ENV['LIB_NAME'] = 'spree_bank_transfer'
   # This gem is PostgreSQL-only: jsonb, partial indexes and pg_trgm are all
   # load-bearing. Default the harness accordingly so a bare `rake test_app`
   # cannot silently build a SQLite app on which none of them are real.
   ENV['DB'] ||= 'postgres'
   # extension:test_app (spree_core) generates the dummy app, migrates Spree's own
-  # schema, then auto-loads generators/aypex_bank_transfer/install/install_generator
+  # schema, then auto-loads generators/spree_bank_transfer/install/install_generator
   # and runs it with --auto-run-migrations. That generator copies *only* this gem's
-  # migrations (scoped via `rake aypex_bank_transfer:install:migrations`, not the
+  # migrations (scoped via `rake spree_bank_transfer:install:migrations`, not the
   # unscoped `railties:install:migrations`) and runs db:migrate, so a fresh
   # `rake test_app` needs no manual migration step.
   Rake::Task['extension:test_app'].execute(install_storefront: true, install_admin: true)

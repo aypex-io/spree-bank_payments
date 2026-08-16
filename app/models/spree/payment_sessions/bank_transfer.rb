@@ -41,7 +41,7 @@ module Spree
 
       def normalize_external_id
         self.external_id_normalized =
-          AypexBankTransfer::IncomingTransfer.normalize_reference(external_id)
+          SpreeBankTransfer::IncomingTransfer.normalize_reference(external_id)
       end
     end
   end
