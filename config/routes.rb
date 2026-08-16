@@ -10,5 +10,12 @@ Spree::Core::Engine.add_routes do
         put :ignore
       end
     end
+
+    resources :payment_methods, only: [] do
+      resources :bank_accounts, only: %i[index new create edit update destroy] do
+        member { put :toggle_offered }
+        collection { post :sync }
+      end
+    end
   end
 end

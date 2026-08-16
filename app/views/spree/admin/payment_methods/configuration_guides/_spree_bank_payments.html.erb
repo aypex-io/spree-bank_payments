@@ -12,6 +12,14 @@
 
 <div class="card mb-3">
   <div class="card-body">
+    <% if payment_method.persisted? %>
+      <p>
+        <%= link_to 'Manage bank accounts',
+                    spree.admin_payment_method_bank_accounts_path(payment_method),
+                    class: 'btn btn-secondary' %>
+      </p>
+    <% end %>
+
     <h5>Webhook URL</h5>
     <p>Paste this into your bank's webhook settings:</p>
     <pre><%= payment_method.webhook_url %></pre>

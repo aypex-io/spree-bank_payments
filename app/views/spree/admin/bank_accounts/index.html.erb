@@ -1,0 +1,63 @@
+<%# Checklist + manual CRUD. `offered` is the admin's choice, always -- sync
+    never sets it, so a freshly synced account (or the very first sync)
+    shows up here unchecked and bank transfer stays unavailable in that
+    currency until someone picks one. `active` is a provider-driven signal
+    (the account is still reported), not the same axis as soft-deletion (an
+    admin decision) -- kept as two separate columns below rather than one
+    combined status so the two don't get conflated. %>
+<h1>Bank accounts — <%= @payment_method.name %></h1>
+
+<% if @bank_accounts.none?(&:offered?) %>
+  <div class="alert alert-warning">
+    No account is offered yet — bank transfer is unavailable to customers
+    until you choose one per currency.
+  </div>
+<% end %>
+
+<p>
+  <%= link_to 'Add account', spree.new_admin_payment_method_bank_account_path(@payment_method),
+              class: 'btn btn-primary' %>
+
+  <% if @payment_method.preferred_reconciler != 'manual' %>
+    <%= button_to 'Sync from provider',
+                  spree.sync_admin_payment_method_bank_accounts_path(@payment_method),
+                  method: :post, class: 'btn btn-secondary' %>
+  <% end %>
+</p>
+
+<table class="table">
+  <thead>
+    <tr><th>Currency</th><th>Account</th><th>Source</th><th>Offered</th><th>Active</th><th></th></tr>
+  </thead>
+  <tbody>
+    <% @bank_accounts.each do |account| %>
+      <tr>
+        <td><%= account.currency %></td>
+        <td>
+          <% account.detail_sets.each do |set| %>
+            <div><strong><%= set.label %></strong>
+              <%= set.fields.map { |label, value| "#{label} #{value}" }.join(' · ') %></div>
+          <% end %>
+        </td>
+        <td><%= account.synced? ? "Synced #{l(account.synced_at, format: :short) if account.synced_at}" : 'Manual' %></td>
+        <td>
+          <%= button_to account.offered? ? 'Offered' : 'Offer',
+                        spree.toggle_offered_admin_payment_method_bank_account_path(@payment_method, account),
+                        method: :put,
+                        class: account.offered? ? 'btn btn-sm btn-success' : 'btn btn-sm btn-outline-secondary' %>
+        </td>
+        <td><%= account.active? ? 'Yes' : 'No' %></td>
+        <td>
+          <% unless account.synced? %>
+            <%= link_to 'Edit', spree.edit_admin_payment_method_bank_account_path(@payment_method, account) %>
+            <%= button_to 'Delete',
+                          spree.admin_payment_method_bank_account_path(@payment_method, account),
+                          method: :delete,
+                          data: { confirm: 'Delete this bank account?' },
+                          class: 'btn btn-sm btn-outline-danger' %>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
