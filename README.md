@@ -18,6 +18,9 @@ bundle install
 bin/rails g aypex_bank_transfer:install
 ```
 
+The generator copies the migrations and then asks whether to run them. Pass
+`--auto-run-migrations` to skip the prompt (useful in scripted installs).
+
 ## Configuration
 
 Add a Bank Transfer payment method in the Spree admin and set:
@@ -30,6 +33,48 @@ Add a Bank Transfer payment method in the Spree admin and set:
 | `discount_percent` | Percentage off `item_total` for paying by transfer |
 | `poll_interval_minutes` | How often the reconciler polls; drives the health gate |
 | `account_*` | Bank details shown to the customer |
+
+## The admin queue and the manual workflow
+
+The gem adds a **Bank transfers** entry to the Spree admin sidebar, pointing
+at `/admin/bank_transfers`. That screen is the operational heart of the gem:
+
+- **The unmatched queue** (`/admin/bank_transfers`) lists every observed
+  transfer that hasn't been matched to an order, with suggested sessions
+  ranked by exact amount first and fuzzy payer-name similarity second. Apply
+  a suggestion in one click, or ignore the transfer with a reason.
+- **Record a received transfer** (`/admin/bank_transfers/new`) is how money
+  gets into the system when you're not running a provider integration. This
+  is **required reading if you use the default `manual` reconciler**: it has
+  nothing to poll and no webhook, so this form is the only way a transfer can
+  ever be recorded. You enter the payment method, amount, currency, payer
+  name, the reference as the customer quoted it, and the date received; the
+  entry then goes through exactly the same matching path as a
+  provider-delivered transfer. An exact match (reference, amount, currency,
+  against a single open session on an unpaid order) applies immediately and
+  marks the order paid. Anything else lands in the queue above.
+
+  Submitting the same form twice is safe: the transfer's identity is derived
+  from what you typed, so a resubmission is recognised as the same transfer
+  and nothing is credited twice.
+
+- **Applying to a mismatched order** takes two deliberate steps. The first
+  click is refused with both amounts spelled out; only then does an explicit
+  "Yes — apply … anyway" control appear for that specific pairing, behind a
+  confirmation dialog. A mismatch is credited for the amount that actually
+  arrived, so the order lands in `balance_due`/`credit_owed` rather than a
+  false `paid`.
+
+### The order panel partial
+
+`aypex_bank_transfer/admin/_order_panel` renders the bank-transfer state for
+a single order — reference, amount, status, expiry, and the matched transfer
+if there is one. The gem does **not** inject it anywhere; render it from your
+admin order view where it makes sense for your store:
+
+```erb
+<%= render 'aypex_bank_transfer/admin/order_panel', order: @order %>
+```
 
 ## Scheduling
 
@@ -61,6 +106,15 @@ Subscribe to `bank_transfer.reconciler_unhealthy` and route it somewhere a
 human will see it. A lapsed credential is an operational incident, not
 background noise.
 
+`ExpireSessionsJob` also leaves alone any order that has already been paid by
+other means — a customer who abandons the transfer and pays by card keeps a
+stale open session, and cancelling it would cancel and restock a paid order.
+Those sessions are closed as `canceled` and
+`bank_transfer.session_superseded` is published instead. For the same reason
+a transfer that arrives against an already-paid order is never auto-applied:
+it queues for a human, because a second payment on a settled order is a
+decision, not a reconciliation.
+
 ## Events
 
 The gem never sends notifications directly — it publishes to
@@ -71,6 +125,7 @@ The gem never sends notifications directly — it publishes to
 | `bank_transfer.instructions_ready` | A payment session is created and the customer needs the reference/bank details |
 | `bank_transfer.reminder_due` | An unpaid session is approaching its expiry deadline |
 | `bank_transfer.expired` | `ExpireSessionsJob` cancels an unpaid order |
+| `bank_transfer.session_superseded` | An open session is closed because its order was already paid another way — the order is left alone |
 | `bank_transfer.reconciler_unhealthy` | The health gate trips (see above) |
 | `bank_transfer.expiry_failed` | `ExpireSessionsJob` hits an error cancelling a specific session |
 

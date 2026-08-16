@@ -1,5 +1,33 @@
 Rails.application.config.after_initialize do
   Rails.application.config.spree.payment_methods << AypexBankTransfer::Gateway
+
+  # I4: without this the unmatched-transfers queue (and the "record a
+  # received transfer" form that is the only ingress under the default
+  # Manual reconciler) is reachable only by typing the URL.
+  #
+  # `Spree.admin.navigation.sidebar.add` is spree_admin 5.6's supported
+  # extension point -- the same call its own scaffold generator emits
+  # (lib/generators/spree/admin/scaffold/templates/navigation_initializer.rb.tt)
+  # and the same registry its defaults use
+  # (config/initializers/spree_admin_navigation.rb), rendered by
+  # `render_navigation(:sidebar)`. Checked, not assumed.
+  #
+  # Guarded because spree_admin is an optional companion: a store running
+  # headless (API only, no admin UI) must not blow up at boot.
+  if defined?(::Spree::Admin::Engine) && ::Spree.admin.respond_to?(:navigation)
+    ::Spree.admin.navigation.sidebar.add(
+      :bank_transfers,
+      label: 'Bank transfers',
+      url: :admin_bank_transfers_path,
+      icon: 'building-bank',
+      position: 25,
+      # Gated on payment management rather than on IncomingTransfer, which
+      # Spree's Ability has no rule for -- `can?` would be false for every
+      # admin and the entry would never render.
+      if: -> { can?(:manage, ::Spree::Payment) },
+      active: -> { controller_name == 'bank_transfers' }
+    )
+  end
 end
 
 # Reconciler registration, and the default mailer's event subscriptions,
