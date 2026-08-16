@@ -68,14 +68,7 @@ module AypexBankTransfer
     end
 
     def label
-      Spree.t('bank_transfer.discount_label', percent: formatted_percent)
-    end
-
-    # Strip a trailing .0 on whole numbers (3 -> "3") but keep fractional
-    # precision (2.5 -> "2.5") -- percent.to_i would silently round 2.5% down
-    # to "2%" in customer-facing copy.
-    def formatted_percent
-      percent == percent.to_i ? percent.to_i.to_s : percent.to_s('F')
+      Spree.t('bank_transfer.discount_label', percent: payment_method.formatted_discount_percent)
     end
 
     def settled_by_bank_transfer?

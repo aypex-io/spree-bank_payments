@@ -1,0 +1,49 @@
+<%# Read by the customer to make their transfer -- from the order confirmation
+    page and the "instructions ready" email. `payment_session` is a
+    Spree::PaymentSessions::BankTransfer.
+
+    The reference, amount, and deadline are the functional core of this
+    partial: auto-matching depends entirely on the customer quoting the
+    reference correctly, so it must stay visually unmissable. %>
+<% bank_details = payment_session.payment_method.bank_details %>
+
+<section class="bank-transfer-instructions">
+  <div class="bank-transfer-instructions__highlight">
+    <h2><%= Spree.t('bank_transfer.reference') %></h2>
+
+    <p class="bank-transfer-reference" data-controller="clipboard">
+      <code class="bank-transfer-reference__code" data-clipboard-target="source"><%= payment_session.reference %></code>
+      <button type="button" data-action="clipboard#copy">Copy</button>
+    </p>
+
+    <p class="bank-transfer-reference-help"><%= Spree.t('bank_transfer.reference_help') %></p>
+
+    <dl class="bank-transfer-amount">
+      <dt><%= Spree.t('bank_transfer.amount_to_transfer') %></dt>
+      <dd class="bank-transfer-amount__value"><%= payment_session.money.to_s %></dd>
+
+      <dt>Transfer by</dt>
+      <dd><%= l(payment_session.expires_at.to_date, format: :long) if payment_session.expires_at %></dd>
+    </dl>
+  </div>
+
+  <dl>
+    <dt>Account name</dt>
+    <dd><%= bank_details[:account_name] %></dd>
+
+    <% if bank_details[:iban].present? %>
+      <dt>IBAN</dt><dd><%= bank_details[:iban] %></dd>
+    <% end %>
+    <% if bank_details[:bic].present? %>
+      <dt>BIC</dt><dd><%= bank_details[:bic] %></dd>
+    <% end %>
+    <% if bank_details[:sort_code].present? %>
+      <dt>Sort code</dt><dd><%= bank_details[:sort_code] %></dd>
+    <% end %>
+    <% if bank_details[:account_number].present? %>
+      <dt>Account number</dt><dd><%= bank_details[:account_number] %></dd>
+    <% end %>
+  </dl>
+
+  <p><%= Spree.t('bank_transfer.dispatch_note') %></p>
+</section>
