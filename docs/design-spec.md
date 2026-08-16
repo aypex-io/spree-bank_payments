@@ -253,16 +253,30 @@ alerts at T-14 / T-7 / T-1 days.
 `preference :discount_percent`, default `0`, validated `0..100`, so the gem is
 usable with no discount at all.
 
-On selection at the payment step, create a `Spree::Adjustment` on the order with
-`source` set to the payment method and `amount = -(order.item_total * pct / 100)`.
+On selection at the payment step, create one `Spree::Adjustment` **per line item**
+with `source` set to the payment method, together summing to
+`-(order.item_total * pct / 100)`. Allocation is proportional to each line's
+amount, with largest-remainder rounding so the parts sum to that figure exactly —
+naive per-line rounding drifts by a cent (3 x 33.33 at 2.5% gives 2.49, not 2.50),
+and `order.total` must equal the amount quoted on the payment session or
+auto-apply's exact-equality check diverts every payment to the manual queue.
+
+Line-item rather than order-level so the discount reaches
+`taxable_adjustment_total` and **recorded tax falls with it** on a tax-inclusive
+(VAT) store. `Spree::BankPayments::Adjuster::Discount`, registered ahead of
+`Spree::Adjustable::Adjuster::Tax` in `config.spree.adjusters`, folds these
+amounts into that total before tax is recomputed from `LineItem#taxable_basis`.
+
 Sourcing from the payment method rather than a promotion action prevents Spree's
-promo recalculation from clearing it.
+promo recalculation from clearing it, and keeps the discount out of
+`competing_promos` — so it **stacks** with promotions rather than cancelling
+them (a 20% promo plus a 3% transfer discount is 23% off).
 
 **The adjustment must be removed when the customer switches payment method**,
 or they keep the discount while paying by card.
 
-Base is `order.item_total`, never `order.total`: `order.total` is gross, rolls in
-shipping and tax, and does not account for VAT correctly on tax-inclusive stores.
+Base is `order.item_total`, never `order.total`: `order.total` is gross and rolls
+in shipping and tax.
 
 Selecting the method visibly changes the order total. Mitigate in the label —
 "Bank Transfer — save 3%" — so it reads as a reward rather than a glitch, and

@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## 5.1.0
+
+**The bank-transfer discount is now tax-aware.**
+
+`discount_percent` was applied as a single order-level `Spree::Adjustment`.
+Order-level adjustments never reach Spree's `taxable_adjustment_total`, so on a
+tax-inclusive (VAT) store the customer paid less while the order still recorded
+tax on the undiscounted price. This was documented as a known limitation; it is
+now fixed.
+
+The discount is applied as one adjustment **per line item**, allocated
+proportionally to each line's amount with largest-remainder rounding so the
+parts sum to exactly `-(item_total * pct / 100)` — naive per-line rounding
+drifts by a cent, and `order.total` must match the amount quoted on the payment
+session or auto-apply's exact-equality check sends every payment to the manual
+queue. A new `Spree::BankPayments::Adjuster::Discount`, registered ahead of
+`Spree::Adjustable::Adjuster::Tax`, folds these into `taxable_adjustment_total`,
+so recorded tax now falls with the discount.
+
+The discount **stacks with promotions** — it is not a competing promo
+adjustment, so neither side is marked ineligible. A 20% promotion plus a 3%
+transfer discount is 23% off. Set `discount_percent` accordingly.
+
+`remove_existing` now searches every adjustment carrying the order's id rather
+than only order-adjustable ones, so a payment-method switch cannot orphan the
+line-item adjustments (and still cleans up adjustments written by 5.0.x).
+
+Minor, not patch: this changes recorded tax on existing tax-inclusive stores.
+
 ## 5.0.0
 
 First public release on RubyGems, as `spree-bank_payments`.

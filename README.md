@@ -147,24 +147,28 @@ handler that calls out to Postmark/Resend/etc. rather than using
 ActionMailer — should disable the default mailer and subscribe to the events
 directly instead of fighting the bundled one.
 
-## Known limitations
+## Tax, and stacking with promotions
 
-**The discount does not affect tax on a tax-inclusive (VAT) store.**
+The discount is applied as one `Spree::Adjustment` per **line item** (sourced
+from the payment method, not a promotion action), allocated proportionally to
+each line's amount and reconciled with largest-remainder rounding so the parts
+sum to exactly `-(item_total * discount_percent / 100)` — to the cent.
 
-`discount_percent` is applied as a single order-level `Spree::Adjustment`
-against `order.item_total`. Spree computes `taxable_adjustment_total` by
-summing tax-relevant adjustments on *line items and shipments only* — an
-order-level adjustment is never included in that sum. The practical effect:
-on a VAT store, the customer pays less, but the order still records tax as
-if calculated on the undiscounted price. The discount and the tax figure
-disagree.
+Because they are line-item adjustments, they reach Spree's
+`taxable_adjustment_total`, so **recorded tax falls with the discount**. On a
+tax-inclusive (VAT) store a 3% discount on a £100 line reduces recorded VAT
+from £16.67 to £16.17. The pre-5.1 order-level adjustment did not do this — the
+customer paid less while the order still recorded tax on the undiscounted
+price. That is fixed.
 
-This is not a bug we plan to quietly patch later — fixing it properly means
-moving the discount onto line-item adjustments, the way Spree's own
-promotions do, which is a bigger change than this gem currently makes. If
-your store is VAT/tax-inclusive, know this before you set a
-`discount_percent`, and evaluate whether the mismatch is acceptable for your
-accounting.
+**The discount stacks with promotions.** It is deliberately not a competing
+promotion: Spree picks a single winner among competing promo adjustments, but
+this is a separate concession for paying by transfer, so it is never marked
+ineligible and never makes a promotion ineligible. A 20% promotion plus a 3%
+transfer discount is 23% off. Set `discount_percent` with that in mind.
+
+Base is always `item_total`, never `order.total` — the discount never applies
+to shipping or tax.
 
 ## The instructions partial ships no CSS
 
