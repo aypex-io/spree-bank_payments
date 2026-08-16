@@ -1,5 +1,5 @@
 Rails.application.config.after_initialize do
-  Rails.application.config.spree.payment_methods << SpreeBankPayments::Gateway
+  Rails.application.config.spree.payment_methods << Spree::BankTransfer::Gateway
 
   # I4: without this the unmatched-transfers queue (and the "record a
   # received transfer" form that is the only ingress under the default
@@ -37,8 +37,8 @@ end
 # but `after_initialize` only runs once at boot. `to_prepare` re-runs on
 # every reload, so both registries survive. Re-registering is safe: the
 # reconciler registry is a plain string-keyed hash, so registering the same
-# key twice is a no-op, and SpreeBankPayments.register_default_mailer_subscribers!
-# is itself idempotent (see lib/spree_bank_payments/subscribers.rb) — it
+# key twice is a no-op, and Spree::BankTransfer.register_default_mailer_subscribers!
+# is itself idempotent (see lib/spree/bank_transfer/subscribers.rb) — it
 # guards each Spree::Events.subscribe call with `registry.registered?` so
 # `to_prepare` firing repeatedly cannot stack duplicate subscriptions and
 # send duplicate mail.
@@ -47,9 +47,9 @@ end
 # `config.spree.payment_methods` is a plain Array, so running that line on
 # every reload would duplicate the entry.
 Rails.application.config.to_prepare do
-  SpreeBankPayments::Reconcilers::Base.register('manual', SpreeBankPayments::Reconcilers::Manual)
+  Spree::BankTransfer::Reconcilers::Base.register('manual', Spree::BankTransfer::Reconcilers::Manual)
 
   # Subscribers must re-register per reload too: spree_core's own to_prepare hook
   # calls Spree::Events.reset!, which drops Proc-based subscribers registered at boot.
-  SpreeBankPayments.register_default_mailer_subscribers! unless SpreeBankPayments::Config.disable_default_mailer
+  Spree::BankTransfer.register_default_mailer_subscribers! unless Spree::BankTransfer::Config.disable_default_mailer
 end

@@ -325,9 +325,9 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
     end
 
     it 'auto-applies an exact match through IngestTransfer and moves the order to paid' do
-      expect { submit }.to change(SpreeBankPayments::IncomingTransfer, :count).by(1)
+      expect { submit }.to change(Spree::BankTransfer::IncomingTransfer, :count).by(1)
 
-      recorded = SpreeBankPayments::IncomingTransfer.last
+      recorded = Spree::BankTransfer::IncomingTransfer.last
       expect(recorded).to be_applied
       expect(recorded.payment_session).to eq(matching_session)
       expect(recorded.payment_method_id).to eq(payment_method.id)
@@ -336,9 +336,9 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
 
     it 'queues a non-matching transfer as unmatched instead of applying it' do
       expect { submit(reference: 'NOT-A-REFERENCE') }.
-        to change(SpreeBankPayments::IncomingTransfer, :count).by(1)
+        to change(Spree::BankTransfer::IncomingTransfer, :count).by(1)
 
-      recorded = SpreeBankPayments::IncomingTransfer.last
+      recorded = Spree::BankTransfer::IncomingTransfer.last
       expect(recorded.state).to eq('unmatched')
       expect(recorded.payment_session).to be_nil
       expect(order.reload.payment_state).not_to eq('paid')
@@ -349,17 +349,17 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
       submit
       expect(order.reload.payment_state).to eq('paid')
 
-      expect { submit }.not_to change(SpreeBankPayments::IncomingTransfer, :count)
+      expect { submit }.not_to change(Spree::BankTransfer::IncomingTransfer, :count)
       expect(order.reload.payments.completed.count).to eq(1)
     end
 
     it 'rejects a non-numeric amount without creating anything' do
-      expect { submit(amount: 'twenty five') }.not_to change(SpreeBankPayments::IncomingTransfer, :count)
+      expect { submit(amount: 'twenty five') }.not_to change(Spree::BankTransfer::IncomingTransfer, :count)
       expect(flash.now[:error]).to be_present
     end
 
     it 'rejects a zero amount without creating anything' do
-      expect { submit(amount: '0') }.not_to change(SpreeBankPayments::IncomingTransfer, :count)
+      expect { submit(amount: '0') }.not_to change(Spree::BankTransfer::IncomingTransfer, :count)
       expect(flash.now[:error]).to be_present
     end
 
@@ -368,7 +368,7 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
       other_gateway = create(:bank_transfer_gateway, store: other_store)
 
       expect { submit(payment_method_id: other_gateway.id) }.
-        not_to change(SpreeBankPayments::IncomingTransfer, :count)
+        not_to change(Spree::BankTransfer::IncomingTransfer, :count)
       expect(flash.now[:error]).to be_present
     end
   end

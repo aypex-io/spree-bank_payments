@@ -1,8 +1,8 @@
-# SpreeBankPayments Core Gem — Implementation Plan (Phase 1)
+# Spree::BankTransfer Core Gem — Implementation Plan (Phase 1)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `spree_bank_payments`, a bank-agnostic Spree 5.6 extension letting customers check out by bank transfer at a configurable discount, with pluggable reconciliation and a manual reconciler that ships working out of the box.
+**Goal:** Build `spree_bank_transfer`, a bank-agnostic Spree 5.6 extension letting customers check out by bank transfer at a configurable discount, with pluggable reconciliation and a manual reconciler that ships working out of the box.
 
 **Architecture:** A `Spree::PaymentMethod` subclass mints a unique payment reference into a `Spree::PaymentSessions::BankTransfer` STI record at checkout. Observed bank transfers land in an `IncomingTransfer` table keyed by provider transaction id (the idempotency guard), and a single `IngestTransfer` service auto-applies them to a session only on an exact reference + amount + currency match — everything else queues for an admin. An expiry job cancels unpaid orders, but only when the reconciler reports healthy.
 
@@ -18,7 +18,7 @@
 - **Never cancel while blind.** Any code path that cancels an order or releases stock must first confirm `reconciler.healthy?`.
 - **Notifications are Spree events first.** Publish via `Spree::Events.publish('<dotted.name>', payload_hash)`; the bundled mailer is a subscriber stores can disable. Never call a mailer directly from domain code. There is no `Spree::Bus` in Spree 5.6.
 - **Event payloads carry serializable primitives only** — IDs and strings, never ActiveRecord objects. Subscribers run async through ActiveJob by default.
-- Gem name: `spree_bank_payments`. Namespace: `SpreeBankPayments`. Repo: `aypex-io/spree_bank_payments`.
+- Gem name: `spree_bank_transfer`. Namespace: `Spree::BankTransfer`. Repo: `aypex-io/spree-bank_transfer`.
 - Spree dependency floor: `>= 5.6.0`.
 - Surcharging language is prohibited. All customer-facing copy says "discount" or "save", never "fee" or "surcharge".
 
@@ -28,63 +28,63 @@
 
 | Path | Responsibility |
 |---|---|
-| `lib/spree_bank_payments.rb` | Gem entrypoint |
-| `lib/spree_bank_payments/engine.rb` | Rails engine, decorator activation |
-| `lib/spree_bank_payments/version.rb` | Version constant |
-| `lib/spree_bank_payments/factories.rb` | FactoryBot factories for consumers |
-| `lib/spree_bank_payments/testing_support/reconciler_shared_examples.rb` | The cross-gem contract test |
+| `lib/spree/bank_transfer.rb` | Gem entrypoint |
+| `lib/spree/bank_transfer/engine.rb` | Rails engine, decorator activation |
+| `lib/spree/bank_transfer/version.rb` | Version constant |
+| `lib/spree/bank_transfer/factories.rb` | FactoryBot factories for consumers |
+| `lib/spree/bank_transfer/testing_support/reconciler_shared_examples.rb` | The cross-gem contract test |
 | `config/initializers/spree.rb` | Payment method + event registration |
 | `db/migrate/*` | Schema |
-| `app/models/spree_bank_payments/base.rb` | Shared AR base class |
-| `app/models/spree_bank_payments/gateway.rb` | The payment method + preferences |
-| `app/models/spree_bank_payments/incoming_transfer.rb` | Observed transfer, audit log, queue |
-| `app/models/spree_bank_payments/reconciler_state.rb` | Health state per payment method |
+| `app/models/spree/bank_transfer/base.rb` | Shared AR base class |
+| `app/models/spree/bank_transfer/gateway.rb` | The payment method + preferences |
+| `app/models/spree/bank_transfer/incoming_transfer.rb` | Observed transfer, audit log, queue |
+| `app/models/spree/bank_transfer/reconciler_state.rb` | Health state per payment method |
 | `app/models/spree/payment_sessions/bank_transfer.rb` | STI payment session |
-| `app/models/spree_bank_payments/transfer_data.rb` | Value object crossing the gem boundary |
-| `app/models/spree_bank_payments/reconcilers/base.rb` | The published contract |
-| `app/models/spree_bank_payments/reconcilers/manual.rb` | Default no-op reconciler |
-| `app/services/spree_bank_payments/reference_generator.rb` | Crockford base32 references |
-| `app/services/spree_bank_payments/ingest_transfer.rb` | Match and apply |
-| `app/services/spree_bank_payments/suggest_matches.rb` | Ranked candidates for unmatched |
-| `app/services/spree_bank_payments/apply_discount.rb` | Discount adjustment lifecycle |
-| `app/jobs/spree_bank_payments/expire_sessions_job.rb` | Expiry with health gate |
-| `app/jobs/spree_bank_payments/poll_job.rb` | Drives the reconciler, records health |
-| `app/jobs/spree_bank_payments/send_reminders_job.rb` | T-2 / T-1 reminders |
-| `app/models/spree_bank_payments/payment_decorator.rb` | Hooks discount to payment creation |
-| `app/mailers/spree_bank_payments/instructions_mailer.rb` | Default notification subscriber |
+| `app/models/spree/bank_transfer/transfer_data.rb` | Value object crossing the gem boundary |
+| `app/models/spree/bank_transfer/reconcilers/base.rb` | The published contract |
+| `app/models/spree/bank_transfer/reconcilers/manual.rb` | Default no-op reconciler |
+| `app/services/spree/bank_transfer/reference_generator.rb` | Crockford base32 references |
+| `app/services/spree/bank_transfer/ingest_transfer.rb` | Match and apply |
+| `app/services/spree/bank_transfer/suggest_matches.rb` | Ranked candidates for unmatched |
+| `app/services/spree/bank_transfer/apply_discount.rb` | Discount adjustment lifecycle |
+| `app/jobs/spree/bank_transfer/expire_sessions_job.rb` | Expiry with health gate |
+| `app/jobs/spree/bank_transfer/poll_job.rb` | Drives the reconciler, records health |
+| `app/jobs/spree/bank_transfer/send_reminders_job.rb` | T-2 / T-1 reminders |
+| `app/models/spree/bank_transfer/payment_decorator.rb` | Hooks discount to payment creation |
+| `app/mailers/spree/bank_transfer/instructions_mailer.rb` | Default notification subscriber |
 | `app/controllers/spree/admin/bank_transfers_controller.rb` | Unmatched queue |
 | `app/views/spree/admin/...` | Admin surfaces |
-| `app/views/spree/checkout/payment/_spree_bank_payments.html.erb` | Storefront payment step |
+| `app/views/spree/checkout/payment/_spree_bank_transfer.html.erb` | Storefront payment step |
 
 ---
 
 ### Task 1: Gem scaffold, engine, and CI
 
 **Files:**
-- Create: `spree_bank_payments.gemspec`, `Gemfile`, `Rakefile`, `bin/rails`, `.rspec`, `.gitignore`, `README.md`, `LICENSE`
-- Create: `lib/spree_bank_payments.rb`, `lib/spree_bank_payments/version.rb`, `lib/spree_bank_payments/engine.rb`
+- Create: `spree-bank_transfer.gemspec`, `Gemfile`, `Rakefile`, `bin/rails`, `.rspec`, `.gitignore`, `README.md`, `LICENSE`
+- Create: `lib/spree/bank_transfer.rb`, `lib/spree/bank_transfer/version.rb`, `lib/spree/bank_transfer/engine.rb`
 - Create: `config/initializers/spree.rb`
-- Create: `app/models/spree_bank_payments/base.rb`
+- Create: `app/models/spree/bank_transfer/base.rb`
 - Create: `spec/spec_helper.rb`
 - Create: `.github/workflows/ci.yml`
 
 **Interfaces:**
 - Consumes: nothing
-- Produces: `SpreeBankPayments::VERSION`, `SpreeBankPayments::Engine`, `SpreeBankPayments::Base` (abstract AR class all gem models inherit)
+- Produces: `Spree::BankTransfer::VERSION`, `Spree::BankTransfer::Engine`, `Spree::BankTransfer::Base` (abstract AR class all gem models inherit)
 
 - [ ] **Step 1: Create the gemspec**
 
 ```ruby
-# spree_bank_payments.gemspec
+# spree-bank_transfer.gemspec
 lib = File.expand_path('../lib/', __FILE__)
 $LOAD_PATH.unshift lib unless $LOAD_PATH.include?(lib)
 
-require 'spree_bank_payments/version'
+require 'spree/bank_transfer/version'
 
 Gem::Specification.new do |s|
   s.platform    = Gem::Platform::RUBY
-  s.name        = 'spree_bank_payments'
-  s.version     = SpreeBankPayments::VERSION
+  s.name        = 'spree_bank_transfer'
+  s.version     = Spree::BankTransfer::VERSION
   s.summary     = 'Bank transfer checkout for Spree, with pluggable payment reconciliation'
   s.description = 'Adds a bank transfer payment method to Spree with an optional discount, ' \
                   'unique payment references, automatic reconciliation of incoming transfers, ' \
@@ -93,7 +93,7 @@ Gem::Specification.new do |s|
 
   s.author   = 'Aypex'
   s.email    = 'hello@aypex.io'
-  s.homepage = 'https://github.com/aypex-io/spree_bank_payments'
+  s.homepage = 'https://github.com/aypex-io/spree-bank_transfer'
   s.license  = 'MIT'
 
   s.files = Dir['{app,config,db,lib}/**/*', 'LICENSE', 'Rakefile', 'README.md']
@@ -111,26 +111,26 @@ end
 - [ ] **Step 2: Create the version, entrypoint, and engine**
 
 ```ruby
-# lib/spree_bank_payments/version.rb
-module SpreeBankPayments
+# lib/spree/bank_transfer/version.rb
+module Spree::BankTransfer
   VERSION = '0.1.0'.freeze
 end
 ```
 
 ```ruby
-# lib/spree_bank_payments.rb
+# lib/spree/bank_transfer.rb
 require 'spree_core'
-require 'spree_bank_payments/version'
-require 'spree_bank_payments/engine'
+require 'spree/bank_transfer/version'
+require 'spree/bank_transfer/engine'
 ```
 
 ```ruby
-# lib/spree_bank_payments/engine.rb
-module SpreeBankPayments
+# lib/spree/bank_transfer/engine.rb
+module Spree::BankTransfer
   class Engine < Rails::Engine
     require 'spree/core'
     isolate_namespace Spree
-    engine_name 'spree_bank_payments'
+    engine_name 'spree_bank_transfer'
 
     config.generators do |g|
       g.test_framework :rspec
@@ -150,13 +150,13 @@ end
 - [ ] **Step 3: Create the abstract model base**
 
 ```ruby
-# app/models/spree_bank_payments/base.rb
-module SpreeBankPayments
+# app/models/spree/bank_transfer/base.rb
+module Spree::BankTransfer
   class Base < ::ActiveRecord::Base
     self.abstract_class = true
 
     def self.table_name_prefix
-      'spree_bank_payments_'
+      'spree_bank_transfer_'
     end
   end
 end
@@ -169,7 +169,7 @@ Payment method registration is added here now; event registration lands in Task 
 ```ruby
 # config/initializers/spree.rb
 Rails.application.config.after_initialize do
-  Rails.application.config.spree.payment_methods << SpreeBankPayments::Gateway
+  Rails.application.config.spree.payment_methods << Spree::BankTransfer::Gateway
 end
 ```
 
@@ -195,7 +195,7 @@ end
 
 desc 'Generates a dummy app for testing'
 task :test_app do
-  ENV['LIB_NAME'] = 'spree_bank_payments'
+  ENV['LIB_NAME'] = 'spree_bank_transfer'
   Rake::Task['extension:test_app'].execute(install_storefront: true, install_admin: true)
 end
 ```
@@ -204,7 +204,7 @@ end
 # bin/rails
 #!/usr/bin/env ruby
 ENGINE_ROOT = File.expand_path('../..', __FILE__)
-ENGINE_PATH = File.expand_path('../../lib/spree_bank_payments/engine', __FILE__)
+ENGINE_PATH = File.expand_path('../../lib/spree/bank_transfer/engine', __FILE__)
 
 require 'rails/all'
 require 'rails/engine/commands'
@@ -223,12 +223,12 @@ ENV['RAILS_ENV'] = 'test'
 
 require File.expand_path('../dummy/config/environment.rb', __FILE__)
 require 'spree_dev_tools/rspec/spec_helper'
-require 'spree_bank_payments/factories'
+require 'spree/bank_transfer/factories'
 
 Dir[File.join(File.dirname(__FILE__), 'support/**/*.rb')].sort.each { |f| require f }
 ```
 
-Create `lib/spree_bank_payments/factories.rb` with an empty `FactoryBot.define do end` block for now — Task 3 fills it.
+Create `lib/spree/bank_transfer/factories.rb` with an empty `FactoryBot.define do end` block for now — Task 3 fills it.
 
 - [ ] **Step 6: Create CI (Postgres only)**
 
@@ -290,7 +290,7 @@ Expected: dummy app generated under `spec/dummy` with no errors.
 
 ```bash
 git add .
-git commit -m "chore: scaffold spree_bank_payments gem"
+git commit -m "chore: scaffold spree_bank_transfer gem"
 ```
 
 ---
@@ -298,25 +298,25 @@ git commit -m "chore: scaffold spree_bank_payments gem"
 ### Task 2: Schema and core models
 
 **Files:**
-- Create: `db/migrate/20260815000001_create_spree_bank_payments_tables.rb`
+- Create: `db/migrate/20260815000001_create_spree_bank_transfer_tables.rb`
 - Create: `db/migrate/20260815000002_add_external_id_normalized_to_payment_sessions.rb`
-- Create: `app/models/spree_bank_payments/incoming_transfer.rb`
-- Create: `app/models/spree_bank_payments/reconciler_state.rb`
-- Test: `spec/models/spree_bank_payments/incoming_transfer_spec.rb`
+- Create: `app/models/spree/bank_transfer/incoming_transfer.rb`
+- Create: `app/models/spree/bank_transfer/reconciler_state.rb`
+- Test: `spec/models/spree/bank_transfer/incoming_transfer_spec.rb`
 
 **Interfaces:**
-- Consumes: `SpreeBankPayments::Base` (Task 1)
+- Consumes: `Spree::BankTransfer::Base` (Task 1)
 - Produces:
-  - `SpreeBankPayments::IncomingTransfer` with states `unmatched`/`applied`/`ignored`, scopes `.unmatched`, `.applied`, and `.normalize_reference(String) → String`
-  - `SpreeBankPayments::ReconcilerState#healthy?(poll_interval_minutes) → Boolean`
+  - `Spree::BankTransfer::IncomingTransfer` with states `unmatched`/`applied`/`ignored`, scopes `.unmatched`, `.applied`, and `.normalize_reference(String) → String`
+  - `Spree::BankTransfer::ReconcilerState#healthy?(poll_interval_minutes) → Boolean`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ruby
-# spec/models/spree_bank_payments/incoming_transfer_spec.rb
+# spec/models/spree/bank_transfer/incoming_transfer_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::IncomingTransfer do
+RSpec.describe Spree::BankTransfer::IncomingTransfer do
   describe '.normalize_reference' do
     it 'upcases, strips non-alphanumerics, and folds Crockford ambiguities' do
       expect(described_class.normalize_reference('tkf-7q4x2')).to eq('TKF7Q4X2')
@@ -343,16 +343,16 @@ end
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `bundle exec rspec spec/models/spree_bank_payments/incoming_transfer_spec.rb`
-Expected: FAIL with `uninitialized constant SpreeBankPayments::IncomingTransfer`
+Run: `bundle exec rspec spec/models/spree/bank_transfer/incoming_transfer_spec.rb`
+Expected: FAIL with `uninitialized constant Spree::BankTransfer::IncomingTransfer`
 
 - [ ] **Step 3: Write the migrations**
 
 ```ruby
-# db/migrate/20260815000001_create_spree_bank_payments_tables.rb
-class CreateSpreeBankPaymentsTables < ActiveRecord::Migration[8.1]
+# db/migrate/20260815000001_create_spree_bank_transfer_tables.rb
+class CreateSpreeBankTransferTables < ActiveRecord::Migration[8.1]
   def change
-    create_table :spree_bank_payments_incoming_transfers do |t|
+    create_table :spree_bank_transfer_incoming_transfers do |t|
       t.string   :provider, null: false
       t.string   :provider_transaction_id, null: false
       t.decimal  :amount, precision: 10, scale: 2, null: false
@@ -370,17 +370,17 @@ class CreateSpreeBankPaymentsTables < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :spree_bank_payments_incoming_transfers,
+    add_index :spree_bank_transfer_incoming_transfers,
               %i[provider provider_transaction_id],
               unique: true, name: 'index_bt_transfers_on_provider_and_txn_id'
-    add_index :spree_bank_payments_incoming_transfers,
+    add_index :spree_bank_transfer_incoming_transfers,
               :reference_normalized, name: 'index_bt_transfers_on_reference_normalized'
-    add_index :spree_bank_payments_incoming_transfers, :state,
+    add_index :spree_bank_transfer_incoming_transfers, :state,
               name: 'index_bt_transfers_on_state'
-    add_index :spree_bank_payments_incoming_transfers, :payment_session_id,
+    add_index :spree_bank_transfer_incoming_transfers, :payment_session_id,
               name: 'index_bt_transfers_on_payment_session_id'
 
-    create_table :spree_bank_payments_reconciler_states do |t|
+    create_table :spree_bank_transfer_reconciler_states do |t|
       t.bigint   :payment_method_id, null: false
       t.datetime :last_successful_run_at
       t.text     :last_error
@@ -388,7 +388,7 @@ class CreateSpreeBankPaymentsTables < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :spree_bank_payments_reconciler_states, :payment_method_id,
+    add_index :spree_bank_transfer_reconciler_states, :payment_method_id,
               unique: true, name: 'index_bt_reconciler_states_on_payment_method_id'
   end
 end
@@ -416,8 +416,8 @@ end
 - [ ] **Step 4: Write the models**
 
 ```ruby
-# app/models/spree_bank_payments/incoming_transfer.rb
-module SpreeBankPayments
+# app/models/spree/bank_transfer/incoming_transfer.rb
+module Spree::BankTransfer
   class IncomingTransfer < Base
     STATES = %w[unmatched applied ignored].freeze
 
@@ -459,8 +459,8 @@ end
 ```
 
 ```ruby
-# app/models/spree_bank_payments/reconciler_state.rb
-module SpreeBankPayments
+# app/models/spree/bank_transfer/reconciler_state.rb
+module Spree::BankTransfer
   class ReconcilerState < Base
     belongs_to :payment_method, class_name: 'Spree::PaymentMethod'
 
@@ -489,9 +489,9 @@ end
 - [ ] **Step 5: Add the factory**
 
 ```ruby
-# lib/spree_bank_payments/factories.rb
+# lib/spree/bank_transfer/factories.rb
 FactoryBot.define do
-  factory :bank_transfer_incoming_transfer, class: 'SpreeBankPayments::IncomingTransfer' do
+  factory :bank_transfer_incoming_transfer, class: 'Spree::BankTransfer::IncomingTransfer' do
     provider { 'test' }
     sequence(:provider_transaction_id) { |n| "TX-#{n}" }
     amount { 25.00 }
@@ -506,7 +506,7 @@ end
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/models/spree_bank_payments/incoming_transfer_spec.rb`
+Run: `bundle exec rspec spec/models/spree/bank_transfer/incoming_transfer_spec.rb`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -521,21 +521,21 @@ git commit -m "feat: add IncomingTransfer and ReconcilerState models"
 ### Task 3: Gateway payment method and preferences
 
 **Files:**
-- Create: `app/models/spree_bank_payments/gateway.rb`
-- Modify: `lib/spree_bank_payments/factories.rb`
-- Test: `spec/models/spree_bank_payments/gateway_spec.rb`
+- Create: `app/models/spree/bank_transfer/gateway.rb`
+- Modify: `lib/spree/bank_transfer/factories.rb`
+- Test: `spec/models/spree/bank_transfer/gateway_spec.rb`
 
 **Interfaces:**
-- Consumes: `SpreeBankPayments::ReconcilerState` (Task 2)
-- Produces: `SpreeBankPayments::Gateway` with preferences `reconciler`, `reference_prefix`, `expiry_days`, `discount_percent`, `poll_interval_minutes`, `account_name`, `account_iban`, `account_bic`, `account_sort_code`, `account_number`; plus `#reconciler_state → ReconcilerState`, `#bank_details → Hash`
+- Consumes: `Spree::BankTransfer::ReconcilerState` (Task 2)
+- Produces: `Spree::BankTransfer::Gateway` with preferences `reconciler`, `reference_prefix`, `expiry_days`, `discount_percent`, `poll_interval_minutes`, `account_name`, `account_iban`, `account_bic`, `account_sort_code`, `account_number`; plus `#reconciler_state → ReconcilerState`, `#bank_details → Hash`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ruby
-# spec/models/spree_bank_payments/gateway_spec.rb
+# spec/models/spree/bank_transfer/gateway_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::Gateway do
+RSpec.describe Spree::BankTransfer::Gateway do
   let(:gateway) { create(:bank_transfer_gateway) }
 
   it 'does not require a payment source' do
@@ -553,7 +553,7 @@ RSpec.describe SpreeBankPayments::Gateway do
   end
 
   it 'lazily creates its reconciler state' do
-    expect { gateway.reconciler_state }.to change(SpreeBankPayments::ReconcilerState, :count).by(1)
+    expect { gateway.reconciler_state }.to change(Spree::BankTransfer::ReconcilerState, :count).by(1)
   end
 
   it 'exposes bank details for display' do
@@ -564,14 +564,14 @@ end
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `bundle exec rspec spec/models/spree_bank_payments/gateway_spec.rb`
-Expected: FAIL with `uninitialized constant SpreeBankPayments::Gateway`
+Run: `bundle exec rspec spec/models/spree/bank_transfer/gateway_spec.rb`
+Expected: FAIL with `uninitialized constant Spree::BankTransfer::Gateway`
 
 - [ ] **Step 3: Write the gateway**
 
 ```ruby
-# app/models/spree_bank_payments/gateway.rb
-module SpreeBankPayments
+# app/models/spree/bank_transfer/gateway.rb
+module Spree::BankTransfer
   class Gateway < ::Spree::PaymentMethod
     preference :reconciler, :string, default: 'manual'
     preference :reference_prefix, :string, default: ''
@@ -623,15 +623,15 @@ module SpreeBankPayments
     end
 
     def description_partial_name
-      'spree_bank_payments'
+      'spree_bank_transfer'
     end
 
     def configuration_guide_partial_name
-      'spree_bank_payments'
+      'spree_bank_transfer'
     end
 
     def reconciler_state
-      SpreeBankPayments::ReconcilerState.find_or_create_by!(payment_method_id: id)
+      Spree::BankTransfer::ReconcilerState.find_or_create_by!(payment_method_id: id)
     end
 
     def bank_details
@@ -664,10 +664,10 @@ end
 
 - [ ] **Step 4: Add the factory**
 
-Append to `lib/spree_bank_payments/factories.rb` inside the existing `FactoryBot.define` block:
+Append to `lib/spree/bank_transfer/factories.rb` inside the existing `FactoryBot.define` block:
 
 ```ruby
-  factory :bank_transfer_gateway, class: 'SpreeBankPayments::Gateway' do
+  factory :bank_transfer_gateway, class: 'Spree::BankTransfer::Gateway' do
     name { 'Bank Transfer' }
     preferences do
       {
@@ -686,7 +686,7 @@ Append to `lib/spree_bank_payments/factories.rb` inside the existing `FactoryBot
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/models/spree_bank_payments/gateway_spec.rb`
+Run: `bundle exec rspec spec/models/spree/bank_transfer/gateway_spec.rb`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -702,25 +702,25 @@ git commit -m "feat: add bank transfer payment method with preferences"
 
 **Files:**
 - Create: `app/models/spree/payment_sessions/bank_transfer.rb`
-- Create: `app/services/spree_bank_payments/reference_generator.rb`
-- Modify: `app/models/spree_bank_payments/gateway.rb` (add `create_payment_session`)
-- Modify: `lib/spree_bank_payments/factories.rb`
-- Test: `spec/services/spree_bank_payments/reference_generator_spec.rb`, `spec/models/spree/payment_sessions/bank_transfer_spec.rb`
+- Create: `app/services/spree/bank_transfer/reference_generator.rb`
+- Modify: `app/models/spree/bank_transfer/gateway.rb` (add `create_payment_session`)
+- Modify: `lib/spree/bank_transfer/factories.rb`
+- Test: `spec/services/spree/bank_transfer/reference_generator_spec.rb`, `spec/models/spree/payment_sessions/bank_transfer_spec.rb`
 
 **Interfaces:**
-- Consumes: `SpreeBankPayments::Gateway` (Task 3), `SpreeBankPayments::IncomingTransfer.normalize_reference` (Task 2)
+- Consumes: `Spree::BankTransfer::Gateway` (Task 3), `Spree::BankTransfer::IncomingTransfer.normalize_reference` (Task 2)
 - Produces:
-  - `SpreeBankPayments::ReferenceGenerator.new(payment_method:).generate → String`
+  - `Spree::BankTransfer::ReferenceGenerator.new(payment_method:).generate → String`
   - `Spree::PaymentSessions::BankTransfer` with `#external_id_normalized`, `#reference`, `#notification_payload → Hash`, scope `.open`
-  - `SpreeBankPayments::Gateway#create_payment_session(order:, amount: nil, external_data: {}) → Spree::PaymentSessions::BankTransfer`
+  - `Spree::BankTransfer::Gateway#create_payment_session(order:, amount: nil, external_data: {}) → Spree::PaymentSessions::BankTransfer`
 
 - [ ] **Step 1: Write the failing tests**
 
 ```ruby
-# spec/services/spree_bank_payments/reference_generator_spec.rb
+# spec/services/spree/bank_transfer/reference_generator_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::ReferenceGenerator do
+RSpec.describe Spree::BankTransfer::ReferenceGenerator do
   let(:payment_method) { create(:bank_transfer_gateway) }
 
   subject(:generator) { described_class.new(payment_method: payment_method) }
@@ -779,8 +779,8 @@ end
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `bundle exec rspec spec/services/spree_bank_payments/reference_generator_spec.rb spec/models/spree/payment_sessions/bank_transfer_spec.rb`
-Expected: FAIL with `uninitialized constant SpreeBankPayments::ReferenceGenerator`
+Run: `bundle exec rspec spec/services/spree/bank_transfer/reference_generator_spec.rb spec/models/spree/payment_sessions/bank_transfer_spec.rb`
+Expected: FAIL with `uninitialized constant Spree::BankTransfer::ReferenceGenerator`
 
 - [ ] **Step 3: Write the payment session**
 
@@ -819,7 +819,7 @@ module Spree
 
       def normalize_external_id
         self.external_id_normalized =
-          SpreeBankPayments::IncomingTransfer.normalize_reference(external_id)
+          Spree::BankTransfer::IncomingTransfer.normalize_reference(external_id)
       end
     end
   end
@@ -829,8 +829,8 @@ end
 - [ ] **Step 4: Write the reference generator**
 
 ```ruby
-# app/services/spree_bank_payments/reference_generator.rb
-module SpreeBankPayments
+# app/services/spree/bank_transfer/reference_generator.rb
+module Spree::BankTransfer
   class ReferenceGenerator
     # Crockford base32: excludes I, L, O and U so handwritten and mistyped
     # references stay unambiguous.
@@ -873,7 +873,7 @@ end
 
 - [ ] **Step 5: Add `create_payment_session` to the gateway**
 
-Add to `app/models/spree_bank_payments/gateway.rb`, after `#payment_session_class`:
+Add to `app/models/spree/bank_transfer/gateway.rb`, after `#payment_session_class`:
 
 ```ruby
     def create_payment_session(order:, amount: nil, external_data: {})
@@ -907,7 +907,7 @@ Append inside the `FactoryBot.define` block:
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/services/spree_bank_payments/reference_generator_spec.rb spec/models/spree/payment_sessions/bank_transfer_spec.rb`
+Run: `bundle exec rspec spec/services/spree/bank_transfer/reference_generator_spec.rb spec/models/spree/payment_sessions/bank_transfer_spec.rb`
 Expected: PASS
 
 - [ ] **Step 8: Commit**
@@ -922,31 +922,31 @@ git commit -m "feat: add bank transfer payment session and reference generation"
 ### Task 5: Reconciler contract, Manual reconciler, and shared examples
 
 **Files:**
-- Create: `app/models/spree_bank_payments/transfer_data.rb`
-- Create: `app/models/spree_bank_payments/reconcilers/base.rb`
-- Create: `app/models/spree_bank_payments/reconcilers/manual.rb`
-- Create: `lib/spree_bank_payments/testing_support/reconciler_shared_examples.rb`
-- Modify: `app/models/spree_bank_payments/gateway.rb` (add `#reconciler`)
-- Test: `spec/models/spree_bank_payments/reconcilers/manual_spec.rb`
+- Create: `app/models/spree/bank_transfer/transfer_data.rb`
+- Create: `app/models/spree/bank_transfer/reconcilers/base.rb`
+- Create: `app/models/spree/bank_transfer/reconcilers/manual.rb`
+- Create: `lib/spree/bank_transfer/testing_support/reconciler_shared_examples.rb`
+- Modify: `app/models/spree/bank_transfer/gateway.rb` (add `#reconciler`)
+- Test: `spec/models/spree/bank_transfer/reconcilers/manual_spec.rb`
 
 **Interfaces:**
-- Consumes: `SpreeBankPayments::Gateway` (Task 3)
+- Consumes: `Spree::BankTransfer::Gateway` (Task 3)
 - Produces:
-  - `SpreeBankPayments::TransferData` — `Data` type with members `provider`, `provider_transaction_id`, `amount`, `currency`, `reference`, `payer_name`, `occurred_at`, `raw`
-  - `SpreeBankPayments::Reconcilers::Base` — `#poll(since:)`, `#parse_webhook(raw_body, headers)`, `#healthy?`, `#configured?`, and `.register(key, klass)` / `.build(payment_method:)`
-  - `SpreeBankPayments::Gateway#reconciler → Reconcilers::Base`
+  - `Spree::BankTransfer::TransferData` — `Data` type with members `provider`, `provider_transaction_id`, `amount`, `currency`, `reference`, `payer_name`, `occurred_at`, `raw`
+  - `Spree::BankTransfer::Reconcilers::Base` — `#poll(since:)`, `#parse_webhook(raw_body, headers)`, `#healthy?`, `#configured?`, and `.register(key, klass)` / `.build(payment_method:)`
+  - `Spree::BankTransfer::Gateway#reconciler → Reconcilers::Base`
   - Shared example group `'a bank transfer reconciler'`
 
-**This is the published cross-gem contract.** Changing any signature here requires a coordinated release of `spree_bank_payments_revolut`.
+**This is the published cross-gem contract.** Changing any signature here requires a coordinated release of `spree-bank_transfer_revolut`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ruby
-# spec/models/spree_bank_payments/reconcilers/manual_spec.rb
+# spec/models/spree/bank_transfer/reconcilers/manual_spec.rb
 require 'spec_helper'
-require 'spree_bank_payments/testing_support/reconciler_shared_examples'
+require 'spree/bank_transfer/testing_support/reconciler_shared_examples'
 
-RSpec.describe SpreeBankPayments::Reconcilers::Manual do
+RSpec.describe Spree::BankTransfer::Reconcilers::Manual do
   let(:payment_method) { create(:bank_transfer_gateway) }
 
   it_behaves_like 'a bank transfer reconciler'
@@ -963,14 +963,14 @@ end
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `bundle exec rspec spec/models/spree_bank_payments/reconcilers/manual_spec.rb`
-Expected: FAIL with `cannot load such file -- spree_bank_payments/testing_support/reconciler_shared_examples`
+Run: `bundle exec rspec spec/models/spree/bank_transfer/reconcilers/manual_spec.rb`
+Expected: FAIL with `cannot load such file -- spree/bank_transfer/testing_support/reconciler_shared_examples`
 
 - [ ] **Step 3: Write the value object**
 
 ```ruby
-# app/models/spree_bank_payments/transfer_data.rb
-module SpreeBankPayments
+# app/models/spree/bank_transfer/transfer_data.rb
+module Spree::BankTransfer
   # The single value object crossing the reconciler boundary. Both ingress
   # paths — webhook and poll — return this, so matching is written once and
   # the two paths cannot drift apart.
@@ -994,8 +994,8 @@ end
 - [ ] **Step 4: Write the contract and the Manual reconciler**
 
 ```ruby
-# app/models/spree_bank_payments/reconcilers/base.rb
-module SpreeBankPayments
+# app/models/spree/bank_transfer/reconcilers/base.rb
+module Spree::BankTransfer
   module Reconcilers
     class Base
       class NotConfiguredError < StandardError; end
@@ -1026,12 +1026,12 @@ module SpreeBankPayments
       end
 
       # @param since [Time]
-      # @return [Array<SpreeBankPayments::TransferData>]
+      # @return [Array<Spree::BankTransfer::TransferData>]
       def poll(since:)
         raise NotImplementedError, "#{self.class} must implement #poll"
       end
 
-      # @return [SpreeBankPayments::TransferData, nil] nil for unsupported events
+      # @return [Spree::BankTransfer::TransferData, nil] nil for unsupported events
       # @raise [Spree::PaymentMethod::WebhookSignatureError]
       def parse_webhook(raw_body, headers)
         raise NotImplementedError, "#{self.class} must implement #parse_webhook"
@@ -1052,8 +1052,8 @@ end
 ```
 
 ```ruby
-# app/models/spree_bank_payments/reconcilers/manual.rb
-module SpreeBankPayments
+# app/models/spree/bank_transfer/reconcilers/manual.rb
+module Spree::BankTransfer
   module Reconcilers
     # The default. An admin applies payments by hand from the transfers queue,
     # so there is nothing to poll and nothing that can become unhealthy.
@@ -1081,12 +1081,12 @@ end
 - [ ] **Step 5: Write the shared example group**
 
 ```ruby
-# lib/spree_bank_payments/testing_support/reconciler_shared_examples.rb
+# lib/spree/bank_transfer/testing_support/reconciler_shared_examples.rb
 RSpec.shared_examples 'a bank transfer reconciler' do
   subject(:reconciler) { described_class.new(payment_method: payment_method) }
 
   it 'inherits the published contract' do
-    expect(described_class.ancestors).to include(SpreeBankPayments::Reconcilers::Base)
+    expect(described_class.ancestors).to include(Spree::BankTransfer::Reconcilers::Base)
   end
 
   it 'accepts a payment_method keyword' do
@@ -1097,13 +1097,13 @@ RSpec.shared_examples 'a bank transfer reconciler' do
     result = reconciler.poll(since: 1.day.ago)
 
     expect(result).to be_an(Array)
-    expect(result).to all(be_a(SpreeBankPayments::TransferData))
+    expect(result).to all(be_a(Spree::BankTransfer::TransferData))
   end
 
   it 'returns TransferData or nil from #parse_webhook' do
     result = reconciler.parse_webhook('{}', {})
 
-    expect(result).to be_nil.or be_a(SpreeBankPayments::TransferData)
+    expect(result).to be_nil.or be_a(Spree::BankTransfer::TransferData)
   end
 
   it 'answers #healthy? with a boolean' do
@@ -1121,10 +1121,10 @@ end
 Add to `config/initializers/spree.rb` inside the existing `after_initialize` block:
 
 ```ruby
-  SpreeBankPayments::Reconcilers::Base.register('manual', SpreeBankPayments::Reconcilers::Manual)
+  Spree::BankTransfer::Reconcilers::Base.register('manual', Spree::BankTransfer::Reconcilers::Manual)
 ```
 
-Add to `app/models/spree_bank_payments/gateway.rb`, after `#reconciler_state`:
+Add to `app/models/spree/bank_transfer/gateway.rb`, after `#reconciler_state`:
 
 ```ruby
     def reconciler
@@ -1134,7 +1134,7 @@ Add to `app/models/spree_bank_payments/gateway.rb`, after `#reconciler_state`:
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/models/spree_bank_payments/reconcilers/manual_spec.rb`
+Run: `bundle exec rspec spec/models/spree/bank_transfer/reconcilers/manual_spec.rb`
 Expected: PASS
 
 - [ ] **Step 8: Commit**
@@ -1149,22 +1149,22 @@ git commit -m "feat: add reconciler contract, manual reconciler, and shared exam
 ### Task 6: IngestTransfer — matching and auto-apply
 
 **Files:**
-- Create: `app/services/spree_bank_payments/ingest_transfer.rb`
-- Test: `spec/services/spree_bank_payments/ingest_transfer_spec.rb`
+- Create: `app/services/spree/bank_transfer/ingest_transfer.rb`
+- Test: `spec/services/spree/bank_transfer/ingest_transfer_spec.rb`
 
 **Interfaces:**
-- Consumes: `SpreeBankPayments::TransferData` (Task 5), `SpreeBankPayments::IncomingTransfer` (Task 2), `Spree::PaymentSessions::BankTransfer` (Task 4)
-- Produces: `SpreeBankPayments::IngestTransfer.new(payment_method:, transfer_data:).call → IncomingTransfer`
+- Consumes: `Spree::BankTransfer::TransferData` (Task 5), `Spree::BankTransfer::IncomingTransfer` (Task 2), `Spree::PaymentSessions::BankTransfer` (Task 4)
+- Produces: `Spree::BankTransfer::IngestTransfer.new(payment_method:, transfer_data:).call → IncomingTransfer`
 
 **This task carries the "auto-apply demands certainty" rule.** Every negative test below is a guard against silently misapplying money.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```ruby
-# spec/services/spree_bank_payments/ingest_transfer_spec.rb
+# spec/services/spree/bank_transfer/ingest_transfer_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::IngestTransfer do
+RSpec.describe Spree::BankTransfer::IngestTransfer do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:order) { create(:order_with_line_items, currency: 'GBP') }
   let!(:session) do
@@ -1174,7 +1174,7 @@ RSpec.describe SpreeBankPayments::IngestTransfer do
   end
 
   def transfer_data(overrides = {})
-    SpreeBankPayments::TransferData.new(
+    Spree::BankTransfer::TransferData.new(
       **{
         provider: 'test',
         provider_transaction_id: 'TX-1',
@@ -1219,7 +1219,7 @@ RSpec.describe SpreeBankPayments::IngestTransfer do
     it 'is a no-op when the same provider transaction arrives twice' do
       ingest
       expect { ingest }.not_to change(Spree::Payment, :count)
-      expect(SpreeBankPayments::IncomingTransfer.count).to eq(1)
+      expect(Spree::BankTransfer::IncomingTransfer.count).to eq(1)
     end
   end
 
@@ -1260,7 +1260,7 @@ RSpec.describe SpreeBankPayments::IngestTransfer do
       allow_any_instance_of(Spree::Payment).to receive(:complete!).and_raise(StandardError, 'boom')
 
       expect { ingest }.to raise_error(StandardError, 'boom')
-      expect(SpreeBankPayments::IncomingTransfer.last).to be_unmatched
+      expect(Spree::BankTransfer::IncomingTransfer.last).to be_unmatched
     end
   end
 end
@@ -1268,14 +1268,14 @@ end
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `bundle exec rspec spec/services/spree_bank_payments/ingest_transfer_spec.rb`
-Expected: FAIL with `uninitialized constant SpreeBankPayments::IngestTransfer`
+Run: `bundle exec rspec spec/services/spree/bank_transfer/ingest_transfer_spec.rb`
+Expected: FAIL with `uninitialized constant Spree::BankTransfer::IngestTransfer`
 
 - [ ] **Step 3: Write the service**
 
 ```ruby
-# app/services/spree_bank_payments/ingest_transfer.rb
-module SpreeBankPayments
+# app/services/spree/bank_transfer/ingest_transfer.rb
+module Spree::BankTransfer
   class IngestTransfer
     def initialize(payment_method:, transfer_data:)
       @payment_method = payment_method
@@ -1348,7 +1348,7 @@ end
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/services/spree_bank_payments/ingest_transfer_spec.rb`
+Run: `bundle exec rspec spec/services/spree/bank_transfer/ingest_transfer_spec.rb`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1363,24 +1363,24 @@ git commit -m "feat: add transfer ingestion with strict auto-apply matching"
 ### Task 7: Match suggestions for the unmatched queue
 
 **Files:**
-- Create: `app/services/spree_bank_payments/suggest_matches.rb`
+- Create: `app/services/spree/bank_transfer/suggest_matches.rb`
 - Create: `db/migrate/20260815000003_enable_pg_trgm.rb`
-- Modify: `lib/spree_bank_payments.rb` (add `pg_trgm_available?`)
-- Test: `spec/services/spree_bank_payments/suggest_matches_spec.rb`
+- Modify: `lib/spree/bank_transfer.rb` (add `pg_trgm_available?`)
+- Test: `spec/services/spree/bank_transfer/suggest_matches_spec.rb`
 
 **Interfaces:**
-- Consumes: `SpreeBankPayments::IncomingTransfer` (Task 2), `Spree::PaymentSessions::BankTransfer` (Task 4)
-- Produces: `SpreeBankPayments::SuggestMatches.new(transfer:).call → Array<Spree::PaymentSessions::BankTransfer>` (at most 5, best first); `SpreeBankPayments.pg_trgm_available? → Boolean`
+- Consumes: `Spree::BankTransfer::IncomingTransfer` (Task 2), `Spree::PaymentSessions::BankTransfer` (Task 4)
+- Produces: `Spree::BankTransfer::SuggestMatches.new(transfer:).call → Array<Spree::PaymentSessions::BankTransfer>` (at most 5, best first); `Spree::BankTransfer.pg_trgm_available? → Boolean`
 
 **Suggestions never auto-apply.** This service is read-only and exists purely to rank candidates for a human.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```ruby
-# spec/services/spree_bank_payments/suggest_matches_spec.rb
+# spec/services/spree/bank_transfer/suggest_matches_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::SuggestMatches do
+RSpec.describe Spree::BankTransfer::SuggestMatches do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:transfer) do
     create(:bank_transfer_incoming_transfer,
@@ -1411,7 +1411,7 @@ RSpec.describe SpreeBankPayments::SuggestMatches do
   end
 
   it 'degrades to amount matching when pg_trgm is unavailable' do
-    allow(SpreeBankPayments).to receive(:pg_trgm_available?).and_return(false)
+    allow(Spree::BankTransfer).to receive(:pg_trgm_available?).and_return(false)
     match = create(:bank_transfer_payment_session,
                    payment_method: payment_method, amount: 25.00, currency: 'GBP')
 
@@ -1422,8 +1422,8 @@ end
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `bundle exec rspec spec/services/spree_bank_payments/suggest_matches_spec.rb`
-Expected: FAIL with `uninitialized constant SpreeBankPayments::SuggestMatches`
+Run: `bundle exec rspec spec/services/spree/bank_transfer/suggest_matches_spec.rb`
+Expected: FAIL with `uninitialized constant Spree::BankTransfer::SuggestMatches`
 
 - [ ] **Step 3: Write the migration**
 
@@ -1448,10 +1448,10 @@ end
 
 - [ ] **Step 4: Add the availability check**
 
-Append to `lib/spree_bank_payments.rb`:
+Append to `lib/spree/bank_transfer.rb`:
 
 ```ruby
-module SpreeBankPayments
+module Spree::BankTransfer
   def self.pg_trgm_available?
     return @pg_trgm_available if defined?(@pg_trgm_available)
 
@@ -1465,8 +1465,8 @@ end
 - [ ] **Step 5: Write the service**
 
 ```ruby
-# app/services/spree_bank_payments/suggest_matches.rb
-module SpreeBankPayments
+# app/services/spree/bank_transfer/suggest_matches.rb
+module Spree::BankTransfer
   # Ranks candidate sessions for an unmatched transfer so an admin can decide.
   # Never applies anything.
   class SuggestMatches
@@ -1498,7 +1498,7 @@ module SpreeBankPayments
     end
 
     def name_matches(exclude:)
-      return [] unless SpreeBankPayments.pg_trgm_available?
+      return [] unless Spree::BankTransfer.pg_trgm_available?
       return [] if transfer.payer_name.blank?
 
       open_sessions.
@@ -1524,7 +1524,7 @@ end
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/services/spree_bank_payments/suggest_matches_spec.rb`
+Run: `bundle exec rspec spec/services/spree/bank_transfer/suggest_matches_spec.rb`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -1539,23 +1539,23 @@ git commit -m "feat: add ranked match suggestions for unmatched transfers"
 ### Task 8: Health gate and expiry job
 
 **Files:**
-- Create: `app/jobs/spree_bank_payments/expire_sessions_job.rb`
-- Modify: `app/models/spree_bank_payments/gateway.rb` (add `#reconciler_healthy?`)
-- Test: `spec/jobs/spree_bank_payments/expire_sessions_job_spec.rb`
+- Create: `app/jobs/spree/bank_transfer/expire_sessions_job.rb`
+- Modify: `app/models/spree/bank_transfer/gateway.rb` (add `#reconciler_healthy?`)
+- Test: `spec/jobs/spree/bank_transfer/expire_sessions_job_spec.rb`
 
 **Interfaces:**
-- Consumes: `SpreeBankPayments::Gateway#reconciler` (Task 5), `ReconcilerState#healthy?` (Task 2), `Spree::PaymentSessions::BankTransfer.open` (Task 4)
-- Produces: `SpreeBankPayments::ExpireSessionsJob.perform_now`
+- Consumes: `Spree::BankTransfer::Gateway#reconciler` (Task 5), `ReconcilerState#healthy?` (Task 2), `Spree::PaymentSessions::BankTransfer.open` (Task 4)
+- Produces: `Spree::BankTransfer::ExpireSessionsJob.perform_now`
 
 **The most important test in the suite lives here.** If the health gate regresses, paying customers lose orders silently.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```ruby
-# spec/jobs/spree_bank_payments/expire_sessions_job_spec.rb
+# spec/jobs/spree/bank_transfer/expire_sessions_job_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::ExpireSessionsJob do
+RSpec.describe Spree::BankTransfer::ExpireSessionsJob do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:order) { create(:completed_order_with_totals) }
   let!(:session) do
@@ -1564,7 +1564,7 @@ RSpec.describe SpreeBankPayments::ExpireSessionsJob do
   end
 
   context 'when the reconciler is healthy' do
-    before { allow_any_instance_of(SpreeBankPayments::Gateway).to receive(:reconciler_healthy?).and_return(true) }
+    before { allow_any_instance_of(Spree::BankTransfer::Gateway).to receive(:reconciler_healthy?).and_return(true) }
 
     it 'expires the session and cancels the order' do
       described_class.perform_now
@@ -1584,7 +1584,7 @@ RSpec.describe SpreeBankPayments::ExpireSessionsJob do
   end
 
   context 'when the reconciler is unhealthy' do
-    before { allow_any_instance_of(SpreeBankPayments::Gateway).to receive(:reconciler_healthy?).and_return(false) }
+    before { allow_any_instance_of(Spree::BankTransfer::Gateway).to receive(:reconciler_healthy?).and_return(false) }
 
     # THE critical test. A blind reconciler must never cancel: the customer
     # may well have paid and we simply cannot see it.
@@ -1609,12 +1609,12 @@ end
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `bundle exec rspec spec/jobs/spree_bank_payments/expire_sessions_job_spec.rb`
-Expected: FAIL with `uninitialized constant SpreeBankPayments::ExpireSessionsJob`
+Run: `bundle exec rspec spec/jobs/spree/bank_transfer/expire_sessions_job_spec.rb`
+Expected: FAIL with `uninitialized constant Spree::BankTransfer::ExpireSessionsJob`
 
 - [ ] **Step 3: Add the gateway health check**
 
-Add to `app/models/spree_bank_payments/gateway.rb`, after `#reconciler`:
+Add to `app/models/spree/bank_transfer/gateway.rb`, after `#reconciler`:
 
 ```ruby
     # Gate on both the reconciler's own opinion and our recorded poll history.
@@ -1630,13 +1630,13 @@ Add to `app/models/spree_bank_payments/gateway.rb`, after `#reconciler`:
 - [ ] **Step 4: Write the job**
 
 ```ruby
-# app/jobs/spree_bank_payments/expire_sessions_job.rb
-module SpreeBankPayments
+# app/jobs/spree/bank_transfer/expire_sessions_job.rb
+module Spree::BankTransfer
   class ExpireSessionsJob < ActiveJob::Base
     queue_as :default
 
     def perform
-      SpreeBankPayments::Gateway.find_each do |payment_method|
+      Spree::BankTransfer::Gateway.find_each do |payment_method|
         unless payment_method.reconciler_healthy?
           # Never cancel while blind: the customer may have paid and we simply
           # cannot see it. Alert and leave everything untouched.
@@ -1684,7 +1684,7 @@ end
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/jobs/spree_bank_payments/expire_sessions_job_spec.rb`
+Run: `bundle exec rspec spec/jobs/spree/bank_transfer/expire_sessions_job_spec.rb`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -1699,24 +1699,24 @@ git commit -m "feat: add expiry job gated on reconciler health"
 ### Task 9: Discount adjustment
 
 **Files:**
-- Create: `app/services/spree_bank_payments/apply_discount.rb`
-- Create: `app/models/spree_bank_payments/payment_decorator.rb`
+- Create: `app/services/spree/bank_transfer/apply_discount.rb`
+- Create: `app/models/spree/bank_transfer/payment_decorator.rb`
 - Create: `config/locales/en.yml`
-- Test: `spec/services/spree_bank_payments/apply_discount_spec.rb`
+- Test: `spec/services/spree/bank_transfer/apply_discount_spec.rb`
 
 **Interfaces:**
-- Consumes: `SpreeBankPayments::Gateway` (Task 3)
-- Produces: `SpreeBankPayments::ApplyDiscount.call(order:, payment_method:) → void`
+- Consumes: `Spree::BankTransfer::Gateway` (Task 3)
+- Produces: `Spree::BankTransfer::ApplyDiscount.call(order:, payment_method:) → void`
 
 **Constraint reminder: the discount base is `order.item_total`, never `order.total`.**
 
 - [ ] **Step 1: Write the failing tests**
 
 ```ruby
-# spec/services/spree_bank_payments/apply_discount_spec.rb
+# spec/services/spree/bank_transfer/apply_discount_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::ApplyDiscount do
+RSpec.describe Spree::BankTransfer::ApplyDiscount do
   let(:payment_method) { create(:bank_transfer_gateway) } # 3% in the factory
   let(:card_method) { create(:credit_card_payment_method) }
   let(:order) { create(:order_with_line_items, item_total: 100.00) }
@@ -1753,14 +1753,14 @@ end
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `bundle exec rspec spec/services/spree_bank_payments/apply_discount_spec.rb`
-Expected: FAIL with `uninitialized constant SpreeBankPayments::ApplyDiscount`
+Run: `bundle exec rspec spec/services/spree/bank_transfer/apply_discount_spec.rb`
+Expected: FAIL with `uninitialized constant Spree::BankTransfer::ApplyDiscount`
 
 - [ ] **Step 3: Write the service**
 
 ```ruby
-# app/services/spree_bank_payments/apply_discount.rb
-module SpreeBankPayments
+# app/services/spree/bank_transfer/apply_discount.rb
+module Spree::BankTransfer
   class ApplyDiscount
     def self.call(order:, payment_method:)
       new(order: order, payment_method: payment_method).call
@@ -1794,7 +1794,7 @@ module SpreeBankPayments
     attr_reader :order, :payment_method
 
     def bank_transfer?
-      payment_method.is_a?(SpreeBankPayments::Gateway)
+      payment_method.is_a?(Spree::BankTransfer::Gateway)
     end
 
     def percent
@@ -1816,7 +1816,7 @@ module SpreeBankPayments
     def remove_existing
       existing = order.adjustments.where(source_type: 'Spree::PaymentMethod').
                  joins("INNER JOIN spree_payment_methods ON spree_payment_methods.id = spree_adjustments.source_id").
-                 where(spree_payment_methods: { type: 'SpreeBankPayments::Gateway' })
+                 where(spree_payment_methods: { type: 'Spree::BankTransfer::Gateway' })
 
       return if existing.empty?
 
@@ -1830,8 +1830,8 @@ end
 - [ ] **Step 4: Hook it to payment creation**
 
 ```ruby
-# app/models/spree_bank_payments/payment_decorator.rb
-module SpreeBankPayments
+# app/models/spree/bank_transfer/payment_decorator.rb
+module Spree::BankTransfer
   module PaymentDecorator
     def self.prepended(base)
       base.after_create :sync_bank_transfer_discount
@@ -1844,13 +1844,13 @@ module SpreeBankPayments
     def sync_bank_transfer_discount
       return if order.blank?
 
-      SpreeBankPayments::ApplyDiscount.call(order: order, payment_method: payment_method)
+      Spree::BankTransfer::ApplyDiscount.call(order: order, payment_method: payment_method)
     end
   end
 end
 
-Spree::Payment.prepend(SpreeBankPayments::PaymentDecorator) unless
-  Spree::Payment.included_modules.include?(SpreeBankPayments::PaymentDecorator)
+Spree::Payment.prepend(Spree::BankTransfer::PaymentDecorator) unless
+  Spree::Payment.included_modules.include?(Spree::BankTransfer::PaymentDecorator)
 ```
 
 - [ ] **Step 5: Add the locale file**
@@ -1871,7 +1871,7 @@ en:
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/services/spree_bank_payments/apply_discount_spec.rb`
+Run: `bundle exec rspec spec/services/spree/bank_transfer/apply_discount_spec.rb`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -1887,26 +1887,26 @@ git commit -m "feat: add bank transfer discount adjustment on item_total"
 
 **Files:**
 - Modify: `config/initializers/spree.rb` (register events)
-- Create: `app/mailers/spree_bank_payments/instructions_mailer.rb`
-- Create: `app/views/spree_bank_payments/instructions_mailer/instructions.html.erb`
-- Create: `app/views/spree_bank_payments/instructions_mailer/reminder.html.erb`
-- Create: `app/jobs/spree_bank_payments/send_reminders_job.rb`
-- Modify: `app/models/spree_bank_payments/gateway.rb` (publish on session creation)
-- Test: `spec/jobs/spree_bank_payments/send_reminders_job_spec.rb`, `spec/mailers/spree_bank_payments/instructions_mailer_spec.rb`
+- Create: `app/mailers/spree/bank_transfer/instructions_mailer.rb`
+- Create: `app/views/spree/bank_transfer/instructions_mailer/instructions.html.erb`
+- Create: `app/views/spree/bank_transfer/instructions_mailer/reminder.html.erb`
+- Create: `app/jobs/spree/bank_transfer/send_reminders_job.rb`
+- Modify: `app/models/spree/bank_transfer/gateway.rb` (publish on session creation)
+- Test: `spec/jobs/spree/bank_transfer/send_reminders_job_spec.rb`, `spec/mailers/spree/bank_transfer/instructions_mailer_spec.rb`
 
 **Interfaces:**
 - Consumes: `Spree::PaymentSessions::BankTransfer` (Task 4), `Gateway#bank_details` (Task 3)
-- Produces: events `'bank_transfer.instructions_ready'`, `'bank_transfer.reminder_due'`, `'bank_transfer.expired'`, `'bank_transfer.reconciler_unhealthy'`; `SpreeBankPayments::SendRemindersJob`
+- Produces: events `'bank_transfer.instructions_ready'`, `'bank_transfer.reminder_due'`, `'bank_transfer.expired'`, `'bank_transfer.reconciler_unhealthy'`; `Spree::BankTransfer::SendRemindersJob`
 
 **Events are the primary mechanism.** TKF delivers mail via storefront webhooks to Resend, so a mailer-only implementation would deliver nothing there.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ruby
-# spec/jobs/spree_bank_payments/send_reminders_job_spec.rb
+# spec/jobs/spree/bank_transfer/send_reminders_job_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::SendRemindersJob do
+RSpec.describe Spree::BankTransfer::SendRemindersJob do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:order) { create(:completed_order_with_totals) }
 
@@ -1944,8 +1944,8 @@ end
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `bundle exec rspec spec/jobs/spree_bank_payments/send_reminders_job_spec.rb`
-Expected: FAIL with `uninitialized constant SpreeBankPayments::SendRemindersJob`
+Run: `bundle exec rspec spec/jobs/spree/bank_transfer/send_reminders_job_spec.rb`
+Expected: FAIL with `uninitialized constant Spree::BankTransfer::SendRemindersJob`
 
 - [ ] **Step 3: Register the events**
 
@@ -1953,20 +1953,20 @@ Replace `config/initializers/spree.rb` with:
 
 ```ruby
 Rails.application.config.after_initialize do
-  Rails.application.config.spree.payment_methods << SpreeBankPayments::Gateway
+  Rails.application.config.spree.payment_methods << Spree::BankTransfer::Gateway
 
-  SpreeBankPayments::Reconcilers::Base.register('manual', SpreeBankPayments::Reconcilers::Manual)
+  Spree::BankTransfer::Reconcilers::Base.register('manual', Spree::BankTransfer::Reconcilers::Manual)
 
   # Spree::Events needs no up-front event registration — publishing a name is
   # enough, and subscribers match on string patterns (wildcards supported).
-  unless SpreeBankPayments::Config.disable_default_mailer
+  unless Spree::BankTransfer::Config.disable_default_mailer
     Spree::Events.subscribe('bank_transfer.instructions_ready') do |event|
-      SpreeBankPayments::InstructionsMailer.
+      Spree::BankTransfer::InstructionsMailer.
         instructions(event.payload[:payment_session_id]).deliver_later
     end
 
     Spree::Events.subscribe('bank_transfer.reminder_due') do |event|
-      SpreeBankPayments::InstructionsMailer.
+      Spree::BankTransfer::InstructionsMailer.
         reminder(event.payload[:payment_session_id]).deliver_later
     end
   end
@@ -1978,29 +1978,29 @@ end
 > ActiveRecord object in a payload will not survive the trip. This is why
 > `#notification_payload` (Task 4) exists and why nothing publishes a model.
 
-Create `lib/spree_bank_payments/configuration.rb`:
+Create `lib/spree/bank_transfer/configuration.rb`:
 
 ```ruby
-module SpreeBankPayments
+module Spree::BankTransfer
   class Configuration < Spree::Preferences::Configuration
     preference :disable_default_mailer, :boolean, default: false
   end
 end
 ```
 
-Add to `lib/spree_bank_payments/engine.rb` inside the `Engine` class:
+Add to `lib/spree/bank_transfer/engine.rb` inside the `Engine` class:
 
 ```ruby
-    initializer 'spree_bank_payments.environment', before: :load_config_initializers do |_app|
-      SpreeBankPayments::Config = SpreeBankPayments::Configuration.new
+    initializer 'spree_bank_transfer.environment', before: :load_config_initializers do |_app|
+      Spree::BankTransfer::Config = Spree::BankTransfer::Configuration.new
     end
 ```
 
-Add `require 'spree_bank_payments/configuration'` to `lib/spree_bank_payments.rb`.
+Add `require 'spree/bank_transfer/configuration'` to `lib/spree/bank_transfer.rb`.
 
 - [ ] **Step 4: Publish on session creation**
 
-In `app/models/spree_bank_payments/gateway.rb`, change `#create_payment_session` to publish after creating:
+In `app/models/spree/bank_transfer/gateway.rb`, change `#create_payment_session` to publish after creating:
 
 ```ruby
     def create_payment_session(order:, amount: nil, external_data: {})
@@ -2023,8 +2023,8 @@ In `app/models/spree_bank_payments/gateway.rb`, change `#create_payment_session`
 - [ ] **Step 5: Write the reminders job**
 
 ```ruby
-# app/jobs/spree_bank_payments/send_reminders_job.rb
-module SpreeBankPayments
+# app/jobs/spree/bank_transfer/send_reminders_job.rb
+module Spree::BankTransfer
   class SendRemindersJob < ActiveJob::Base
     queue_as :default
 
@@ -2058,8 +2058,8 @@ end
 - [ ] **Step 6: Write the mailer and templates**
 
 ```ruby
-# app/mailers/spree_bank_payments/instructions_mailer.rb
-module SpreeBankPayments
+# app/mailers/spree/bank_transfer/instructions_mailer.rb
+module Spree::BankTransfer
   class InstructionsMailer < ApplicationMailer
     def instructions(payment_session_id)
       @session = ::Spree::PaymentSessions::BankTransfer.find(payment_session_id)
@@ -2081,7 +2081,7 @@ end
 ```
 
 ```erb
-<%# app/views/spree_bank_payments/instructions_mailer/instructions.html.erb %>
+<%# app/views/spree/bank_transfer/instructions_mailer/instructions.html.erb %>
 <h1><%= Spree.t('bank_transfer.reference') %>: <%= @session.reference %></h1>
 
 <p><%= Spree.t('bank_transfer.reference_help') %></p>
@@ -2110,7 +2110,7 @@ Create `reminder.html.erb` with the same body preceded by:
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/jobs/spree_bank_payments/send_reminders_job_spec.rb`
+Run: `bundle exec rspec spec/jobs/spree/bank_transfer/send_reminders_job_spec.rb`
 Expected: PASS
 
 - [ ] **Step 8: Commit**
@@ -2125,10 +2125,10 @@ git commit -m "feat: publish bank transfer events and ship a default mailer"
 ### Task 11: Storefront payment step and confirmation
 
 **Files:**
-- Create: `app/views/spree/checkout/payment/_spree_bank_payments.html.erb`
-- Create: `app/views/spree/admin/payment_methods/descriptions/_spree_bank_payments.html.erb`
-- Create: `app/views/spree_bank_payments/_order_instructions.html.erb`
-- Test: `spec/views/spree_bank_payments/order_instructions_spec.rb`, `spec/views/spree/checkout/payment/bank_transfer_spec.rb`
+- Create: `app/views/spree/checkout/payment/_spree_bank_transfer.html.erb`
+- Create: `app/views/spree/admin/payment_methods/descriptions/_spree_bank_transfer.html.erb`
+- Create: `app/views/spree/bank_transfer/_order_instructions.html.erb`
+- Test: `spec/views/spree/bank_transfer/order_instructions_spec.rb`, `spec/views/spree/checkout/payment/bank_transfer_spec.rb`
 
 **Interfaces:**
 - Consumes: `Gateway#bank_details`, `Gateway#preferred_discount_percent` (Task 3), `Spree::PaymentSessions::BankTransfer#reference` (Task 4)
@@ -2137,30 +2137,30 @@ git commit -m "feat: publish bank transfer events and ship a default mailer"
 - [ ] **Step 1: Write the failing test**
 
 ```ruby
-# spec/views/spree_bank_payments/order_instructions_spec.rb
+# spec/views/spree/bank_transfer/order_instructions_spec.rb
 require 'spec_helper'
 
-RSpec.describe 'spree_bank_payments/_order_instructions', type: :view do
+RSpec.describe 'spree/bank_transfer/_order_instructions', type: :view do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:order) { create(:completed_order_with_totals) }
   let(:payment_session) { payment_method.create_payment_session(order: order) }
 
   it 'shows the reference prominently' do
-    render partial: 'spree_bank_payments/order_instructions',
+    render partial: 'spree/bank_transfer/order_instructions',
            locals: { payment_session: payment_session }
 
     expect(rendered).to include(payment_session.reference)
   end
 
   it 'shows the bank details' do
-    render partial: 'spree_bank_payments/order_instructions',
+    render partial: 'spree/bank_transfer/order_instructions',
            locals: { payment_session: payment_session }
 
     expect(rendered).to include('GB00TEST00000000000000')
   end
 
   it 'never uses surcharge language' do
-    render partial: 'spree_bank_payments/order_instructions',
+    render partial: 'spree/bank_transfer/order_instructions',
            locals: { payment_session: payment_session }
 
     expect(rendered.downcase).not_to include('surcharge')
@@ -2174,11 +2174,11 @@ Also create `spec/views/spree/checkout/payment/bank_transfer_spec.rb`:
 ```ruby
 require 'spec_helper'
 
-RSpec.describe 'spree/checkout/payment/_spree_bank_payments', type: :view do
+RSpec.describe 'spree/checkout/payment/_spree_bank_transfer', type: :view do
   let(:payment_method) { create(:bank_transfer_gateway) } # 3% in the factory
 
   it 'advertises the saving as a discount, never a fee' do
-    render partial: 'spree/checkout/payment/spree_bank_payments',
+    render partial: 'spree/checkout/payment/spree_bank_transfer',
            locals: { payment_method: payment_method }
 
     expect(rendered).to include('save 3%')
@@ -2186,7 +2186,7 @@ RSpec.describe 'spree/checkout/payment/_spree_bank_payments', type: :view do
   end
 
   it 'states the payment window' do
-    render partial: 'spree/checkout/payment/spree_bank_payments',
+    render partial: 'spree/checkout/payment/spree_bank_transfer',
            locals: { payment_method: payment_method }
 
     expect(rendered).to include('3 days')
@@ -2195,7 +2195,7 @@ RSpec.describe 'spree/checkout/payment/_spree_bank_payments', type: :view do
   it 'omits the discount line when no discount is configured' do
     payment_method.update!(preferred_discount_percent: 0)
 
-    render partial: 'spree/checkout/payment/spree_bank_payments',
+    render partial: 'spree/checkout/payment/spree_bank_transfer',
            locals: { payment_method: payment_method }
 
     expect(rendered).not_to include('save')
@@ -2211,7 +2211,7 @@ Expected: FAIL — partials missing
 - [ ] **Step 3: Write the checkout partial**
 
 ```erb
-<%# app/views/spree/checkout/payment/_spree_bank_payments.html.erb %>
+<%# app/views/spree/checkout/payment/_spree_bank_transfer.html.erb %>
 <div class="bank-transfer-payment" data-payment-method-id="<%= payment_method.id %>">
   <% if payment_method.preferred_discount_percent.to_d.positive? %>
     <p class="bank-transfer-discount">
@@ -2228,7 +2228,7 @@ Expected: FAIL — partials missing
 - [ ] **Step 4: Write the instructions partial**
 
 ```erb
-<%# app/views/spree_bank_payments/_order_instructions.html.erb %>
+<%# app/views/spree/bank_transfer/_order_instructions.html.erb %>
 <% bank_details = payment_session.payment_method.bank_details %>
 
 <section class="bank-transfer-instructions">
@@ -2269,7 +2269,7 @@ Expected: FAIL — partials missing
 - [ ] **Step 5: Write the admin description partial**
 
 ```erb
-<%# app/views/spree/admin/payment_methods/descriptions/_spree_bank_payments.html.erb %>
+<%# app/views/spree/admin/payment_methods/descriptions/_spree_bank_transfer.html.erb %>
 <p>
   Accept direct bank transfers with a unique payment reference per order,
   an optional discount, and automatic reconciliation of incoming payments.
@@ -2293,7 +2293,7 @@ git commit -m "feat: add storefront payment step and transfer instructions"
 ### Task 12: Admin configuration guide
 
 **Files:**
-- Create: `app/views/spree/admin/payment_methods/configuration_guides/_spree_bank_payments.html.erb`
+- Create: `app/views/spree/admin/payment_methods/configuration_guides/_spree_bank_transfer.html.erb`
 - Test: `spec/features/admin/bank_transfer_configuration_spec.rb`
 
 **Interfaces:**
@@ -2328,7 +2328,7 @@ Expected: FAIL — partial missing
 - [ ] **Step 3: Write the partial**
 
 ```erb
-<%# app/views/spree/admin/payment_methods/configuration_guides/_spree_bank_payments.html.erb %>
+<%# app/views/spree/admin/payment_methods/configuration_guides/_spree_bank_transfer.html.erb %>
 <% state = payment_method.reconciler_state %>
 <% healthy = payment_method.reconciler_healthy? %>
 
@@ -2486,13 +2486,13 @@ module Spree
       before_action :load_transfer, only: %i[apply ignore]
 
       def index
-        @transfers = SpreeBankPayments::IncomingTransfer.
+        @transfers = Spree::BankTransfer::IncomingTransfer.
                      unmatched.
                      order(occurred_at: :desc).
                      page(params[:page]).per(25)
 
         @suggestions = @transfers.each_with_object({}) do |transfer, acc|
-          acc[transfer.id] = SpreeBankPayments::SuggestMatches.new(transfer: transfer).call
+          acc[transfer.id] = Spree::BankTransfer::SuggestMatches.new(transfer: transfer).call
         end
       end
 
@@ -2531,7 +2531,7 @@ module Spree
       private
 
       def load_transfer
-        @transfer = SpreeBankPayments::IncomingTransfer.find(params[:id])
+        @transfer = Spree::BankTransfer::IncomingTransfer.find(params[:id])
       end
     end
   end
@@ -2602,9 +2602,9 @@ git commit -m "feat: add admin unmatched transfers queue"
 ### Task 14: Admin order detail panel and full-suite verification
 
 **Files:**
-- Create: `app/views/spree_bank_payments/admin/_order_panel.html.erb`
+- Create: `app/views/spree/bank_transfer/admin/_order_panel.html.erb`
 - Modify: `README.md`
-- Test: `spec/views/spree_bank_payments/admin/order_panel_spec.rb`
+- Test: `spec/views/spree/bank_transfer/admin/order_panel_spec.rb`
 
 **Interfaces:**
 - Consumes: everything built so far
@@ -2613,24 +2613,24 @@ git commit -m "feat: add admin unmatched transfers queue"
 - [ ] **Step 1: Write the failing test**
 
 ```ruby
-# spec/views/spree_bank_payments/admin/order_panel_spec.rb
+# spec/views/spree/bank_transfer/admin/order_panel_spec.rb
 require 'spec_helper'
 
-RSpec.describe 'spree_bank_payments/admin/_order_panel', type: :view do
+RSpec.describe 'spree/bank_transfer/admin/_order_panel', type: :view do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:order) { create(:completed_order_with_totals) }
 
   it 'shows the reference and awaiting status for an unpaid order' do
     session = payment_method.create_payment_session(order: order)
 
-    render partial: 'spree_bank_payments/admin/order_panel', locals: { order: order }
+    render partial: 'spree/bank_transfer/admin/order_panel', locals: { order: order }
 
     expect(rendered).to include(session.reference)
     expect(rendered).to include('Awaiting transfer')
   end
 
   it 'renders nothing for an order with no bank transfer session' do
-    render partial: 'spree_bank_payments/admin/order_panel', locals: { order: order }
+    render partial: 'spree/bank_transfer/admin/order_panel', locals: { order: order }
 
     expect(rendered.strip).to be_empty
   end
@@ -2639,13 +2639,13 @@ end
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `bundle exec rspec spec/views/spree_bank_payments/admin/order_panel_spec.rb`
+Run: `bundle exec rspec spec/views/spree/bank_transfer/admin/order_panel_spec.rb`
 Expected: FAIL — partial missing
 
 - [ ] **Step 3: Write the panel**
 
 ```erb
-<%# app/views/spree_bank_payments/admin/_order_panel.html.erb %>
+<%# app/views/spree/bank_transfer/admin/_order_panel.html.erb %>
 <% session = Spree::PaymentSessions::BankTransfer.where(order_id: order.id).order(created_at: :desc).first %>
 <% return if session.blank? %>
 
@@ -2678,7 +2678,7 @@ Expected: FAIL — partial missing
         </dd>
       <% end %>
 
-      <% transfer = SpreeBankPayments::IncomingTransfer.find_by(payment_session_id: session.id) %>
+      <% transfer = Spree::BankTransfer::IncomingTransfer.find_by(payment_session_id: session.id) %>
       <% if transfer.present? %>
         <dt class="col-4">Matched transfer</dt>
         <dd class="col-8">
@@ -2696,7 +2696,7 @@ Expected: FAIL — partial missing
 - [ ] **Step 4: Write the README**
 
 ```markdown
-# spree_bank_payments
+# spree_bank_transfer
 
 Bank transfer checkout for Spree 5.6+, with pluggable reconciliation of
 incoming payments.
@@ -2708,12 +2708,12 @@ PostgreSQL. The gem uses `jsonb`, partial unique indexes, and `pg_trgm`.
 ## Installation
 
 ```ruby
-gem 'spree_bank_payments', github: 'aypex-io/spree_bank_payments'
+gem 'spree-bank_transfer', github: 'aypex-io/spree-bank_transfer'
 ```
 
 ```bash
 bundle install
-bin/rails g spree_bank_payments:install
+bin/rails g spree:bank_transfer:install
 ```
 
 ## Configuration
@@ -2722,7 +2722,7 @@ Add a Bank Transfer payment method in the Spree admin and set:
 
 | Preference | Purpose |
 |---|---|
-| `reconciler` | `manual` by default; `revolut` with `spree_bank_payments_revolut` installed |
+| `reconciler` | `manual` by default; `revolut` with `spree-bank_transfer_revolut` installed |
 | `reference_prefix` | Prefix on generated references, e.g. `TKF-` |
 | `expiry_days` | Days before an unpaid order is cancelled and restocked |
 | `discount_percent` | Percentage off `item_total` for paying by transfer |
@@ -2734,8 +2734,8 @@ Add a Bank Transfer payment method in the Spree admin and set:
 Both jobs must be scheduled — without them nothing expires and no reminders send:
 
 ```ruby
-SpreeBankPayments::ExpireSessionsJob  # hourly
-SpreeBankPayments::SendRemindersJob   # daily
+Spree::BankTransfer::ExpireSessionsJob  # hourly
+Spree::BankTransfer::SendRemindersJob   # daily
 ```
 
 ## The health gate
@@ -2759,17 +2759,17 @@ Payloads contain serializable primitives only — see
 `Spree::Events.subscribe('bank_transfer.*', MyHandler)`.
 
 A default mailer subscribes to the first two. Disable it with
-`SpreeBankPayments::Config.disable_default_mailer = true` when your store
+`Spree::BankTransfer::Config.disable_default_mailer = true` when your store
 delivers mail another way.
 
 ## Writing a reconciler
 
-Subclass `SpreeBankPayments::Reconcilers::Base`, implement `#poll(since:)`,
+Subclass `Spree::BankTransfer::Reconcilers::Base`, implement `#poll(since:)`,
 `#parse_webhook(raw_body, headers)`, `#healthy?` and `#configured?`, register it,
 and run the shared contract test:
 
 ```ruby
-require 'spree_bank_payments/testing_support/reconciler_shared_examples'
+require 'spree/bank_transfer/testing_support/reconciler_shared_examples'
 
 RSpec.describe MyReconciler do
   let(:payment_method) { create(:bank_transfer_gateway) }
@@ -2786,7 +2786,7 @@ Expected: PASS, all specs green
 
 - [ ] **Step 6: Verify the critical guarantee explicitly**
 
-Run: `bundle exec rspec spec/jobs/spree_bank_payments/expire_sessions_job_spec.rb -e 'cancels nothing'`
+Run: `bundle exec rspec spec/jobs/spree/bank_transfer/expire_sessions_job_spec.rb -e 'cancels nothing'`
 Expected: PASS. If this test does not exist or does not pass, stop — the gem is not safe to ship.
 
 - [ ] **Step 7: Commit**
@@ -2801,16 +2801,16 @@ git commit -m "feat: add admin order panel and document the gem"
 ### Task 15: Webhook entrypoint and poll job
 
 **Files:**
-- Modify: `app/models/spree_bank_payments/gateway.rb` (add `parse_webhook_event`)
-- Create: `app/jobs/spree_bank_payments/poll_job.rb`
-- Test: `spec/models/spree_bank_payments/gateway_webhook_spec.rb`, `spec/jobs/spree_bank_payments/poll_job_spec.rb`
+- Modify: `app/models/spree/bank_transfer/gateway.rb` (add `parse_webhook_event`)
+- Create: `app/jobs/spree/bank_transfer/poll_job.rb`
+- Test: `spec/models/spree/bank_transfer/gateway_webhook_spec.rb`, `spec/jobs/spree/bank_transfer/poll_job_spec.rb`
 
 **Interfaces:**
 - Consumes: `Reconcilers::Base#parse_webhook`, `#poll` (Task 5), `IngestTransfer` (Task 6), `ReconcilerState#record_success!`/`#record_failure!` (Task 2)
-- Produces: `SpreeBankPayments::Gateway#parse_webhook_event(raw_body, headers) → Hash|nil`, `SpreeBankPayments::PollJob.perform_now`
+- Produces: `Spree::BankTransfer::Gateway#parse_webhook_event(raw_body, headers) → Hash|nil`, `Spree::BankTransfer::PollJob.perform_now`
 
 Both ingress paths are bank-agnostic wiring and belong in core. The `Manual`
-reconciler makes them harmless no-ops; `spree_bank_payments_revolut` makes them
+reconciler makes them harmless no-ops; `spree-bank_transfer_revolut` makes them
 live by supplying an adapter that actually returns data.
 
 Spree's `Spree::Api::V3::Webhooks::PaymentsController` calls
@@ -2822,10 +2822,10 @@ controller treats as acknowledge-receipt.
 - [ ] **Step 1: Write the failing tests**
 
 ```ruby
-# spec/models/spree_bank_payments/gateway_webhook_spec.rb
+# spec/models/spree/bank_transfer/gateway_webhook_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::Gateway, '#parse_webhook_event' do
+RSpec.describe Spree::BankTransfer::Gateway, '#parse_webhook_event' do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:order) { create(:order_with_line_items, currency: 'GBP') }
   let!(:session) do
@@ -2841,7 +2841,7 @@ RSpec.describe SpreeBankPayments::Gateway, '#parse_webhook_event' do
   end
 
   let(:data) do
-    SpreeBankPayments::TransferData.new(
+    Spree::BankTransfer::TransferData.new(
       provider: 'test', provider_transaction_id: 'TX-1', amount: 25.00,
       currency: 'GBP', reference: 'TKF-7Q4X2', payer_name: 'Jane Doe',
       occurred_at: Time.current, raw: {}
@@ -2861,23 +2861,23 @@ RSpec.describe SpreeBankPayments::Gateway, '#parse_webhook_event' do
 
     expect(result[:action]).to eq(:captured)
     expect(result[:payment_session]).to eq(session)
-    expect(SpreeBankPayments::IncomingTransfer.last).to be_applied
+    expect(Spree::BankTransfer::IncomingTransfer.last).to be_applied
   end
 
   it 'persists the transfer but returns nil when nothing matches' do
     stub_reconciler(data.with(reference: 'TKF-NOPE1'))
 
     expect(payment_method.parse_webhook_event('{}', {})).to be_nil
-    expect(SpreeBankPayments::IncomingTransfer.last).to be_unmatched
+    expect(Spree::BankTransfer::IncomingTransfer.last).to be_unmatched
   end
 end
 ```
 
 ```ruby
-# spec/jobs/spree_bank_payments/poll_job_spec.rb
+# spec/jobs/spree/bank_transfer/poll_job_spec.rb
 require 'spec_helper'
 
-RSpec.describe SpreeBankPayments::PollJob do
+RSpec.describe Spree::BankTransfer::PollJob do
   let(:payment_method) { create(:bank_transfer_gateway) }
 
   before { payment_method }
@@ -2889,7 +2889,7 @@ RSpec.describe SpreeBankPayments::PollJob do
   end
 
   it 'records a failure and does not raise when the reconciler blows up' do
-    allow_any_instance_of(SpreeBankPayments::Reconcilers::Manual).
+    allow_any_instance_of(Spree::BankTransfer::Reconcilers::Manual).
       to receive(:poll).and_raise(StandardError, 'credentials expired')
 
     expect { described_class.perform_now }.not_to raise_error
@@ -2901,28 +2901,28 @@ RSpec.describe SpreeBankPayments::PollJob do
   end
 
   it 'ingests every transfer the reconciler returns' do
-    data = SpreeBankPayments::TransferData.new(
+    data = Spree::BankTransfer::TransferData.new(
       provider: 'test', provider_transaction_id: 'TX-77', amount: 10.00,
       currency: 'GBP', reference: 'TKF-ZZZZZZ', payer_name: 'Jane Doe',
       occurred_at: Time.current, raw: {}
     )
-    allow_any_instance_of(SpreeBankPayments::Reconcilers::Manual).
+    allow_any_instance_of(Spree::BankTransfer::Reconcilers::Manual).
       to receive(:poll).and_return([data])
 
     expect { described_class.perform_now }.
-      to change(SpreeBankPayments::IncomingTransfer, :count).by(1)
+      to change(Spree::BankTransfer::IncomingTransfer, :count).by(1)
   end
 end
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `bundle exec rspec spec/models/spree_bank_payments/gateway_webhook_spec.rb spec/jobs/spree_bank_payments/poll_job_spec.rb`
+Run: `bundle exec rspec spec/models/spree/bank_transfer/gateway_webhook_spec.rb spec/jobs/spree/bank_transfer/poll_job_spec.rb`
 Expected: FAIL — `parse_webhook_event` raises `NotImplementedError`, `PollJob` undefined
 
 - [ ] **Step 3: Implement `parse_webhook_event`**
 
-Add to `app/models/spree_bank_payments/gateway.rb`, after `#reconciler_healthy?`:
+Add to `app/models/spree/bank_transfer/gateway.rb`, after `#reconciler_healthy?`:
 
 ```ruby
     # Called by Spree::Api::V3::Webhooks::PaymentsController. Signature
@@ -2947,8 +2947,8 @@ Add to `app/models/spree_bank_payments/gateway.rb`, after `#reconciler_healthy?`
 - [ ] **Step 4: Write the poll job**
 
 ```ruby
-# app/jobs/spree_bank_payments/poll_job.rb
-module SpreeBankPayments
+# app/jobs/spree/bank_transfer/poll_job.rb
+module Spree::BankTransfer
   class PollJob < ActiveJob::Base
     queue_as :default
 
@@ -2958,7 +2958,7 @@ module SpreeBankPayments
     OVERLAP = 2.hours
 
     def perform
-      SpreeBankPayments::Gateway.find_each do |payment_method|
+      Spree::BankTransfer::Gateway.find_each do |payment_method|
         poll_one(payment_method)
       end
     end
@@ -2978,7 +2978,7 @@ module SpreeBankPayments
       # Never re-raise: one misconfigured payment method must not stop the
       # others, and the recorded failure is what flips the health gate.
       state.record_failure!(e.message)
-      Rails.error.report(e, source: 'spree_bank_payments.poll')
+      Rails.error.report(e, source: 'spree_bank_transfer.poll')
     end
   end
 end
@@ -2986,12 +2986,12 @@ end
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `bundle exec rspec spec/models/spree_bank_payments/gateway_webhook_spec.rb spec/jobs/spree_bank_payments/poll_job_spec.rb`
+Run: `bundle exec rspec spec/models/spree/bank_transfer/gateway_webhook_spec.rb spec/jobs/spree/bank_transfer/poll_job_spec.rb`
 Expected: PASS
 
 - [ ] **Step 6: Document the schedule**
 
-Add `SpreeBankPayments::PollJob` to the scheduling table in `README.md`, at the payment method's `poll_interval_minutes` cadence (default every 15 minutes), noting that the health gate derives from this job's success.
+Add `Spree::BankTransfer::PollJob` to the scheduling table in `README.md`, at the payment method's `poll_interval_minutes` cadence (default every 15 minutes), noting that the health gate derives from this job's success.
 
 - [ ] **Step 7: Commit**
 
