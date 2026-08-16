@@ -16,6 +16,7 @@ module AypexBankTransfer
     private
 
     def poll_one(payment_method)
+      state = nil
       state = payment_method.reconciler_state
       since = (state.last_successful_run_at || 7.days.ago) - OVERLAP
 
@@ -27,7 +28,10 @@ module AypexBankTransfer
     rescue StandardError => e
       # Never re-raise: one misconfigured payment method must not stop the
       # others, and the recorded failure is what flips the health gate.
-      state.record_failure!(e.message)
+      # `state` itself may be nil (e.g. reconciler_state's find_or_create_by!
+      # racing a concurrent first-ever call) -- guard it so a NoMethodError
+      # here can't escape and wedge every payment method after this one.
+      state&.record_failure!(e.message)
       Rails.error.report(e, source: 'aypex_bank_transfer.poll')
     end
   end

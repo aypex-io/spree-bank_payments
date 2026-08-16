@@ -26,7 +26,10 @@ RSpec.describe AypexBankTransfer::Gateway, '#parse_webhook_event' do
   it 'returns nil when the reconciler ignores the event' do
     stub_reconciler(nil)
 
-    expect(payment_method.parse_webhook_event('{}', {})).to be_nil
+    result = nil
+    expect { result = payment_method.parse_webhook_event('{}', {}) }.
+      not_to change(AypexBankTransfer::IncomingTransfer, :count)
+    expect(result).to be_nil
   end
 
   it 'ingests and reports a captured action on an exact match' do
