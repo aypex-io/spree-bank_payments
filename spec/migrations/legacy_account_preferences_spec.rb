@@ -47,4 +47,42 @@ RSpec.describe 'legacy account preference migration' do
 
     expect(bare.reload.bank_accounts).to be_empty
   end
+
+  it 'includes only the legacy fields that were actually set, in order, correctly labeled' do
+    partial = create(:bank_transfer_gateway)
+    partial.preferences = partial.preferences.merge(
+      account_name: 'Partial Ltd', account_iban: 'GB00PARTIAL000000000',
+      account_bic: nil, account_sort_code: nil, account_number: nil
+    )
+    partial.save!
+
+    Spree::BankPayments::MigrateLegacyAccounts.call
+
+    fields = partial.reload.bank_accounts.sole.detail_sets.first.fields
+    expect(fields).to eq([['Account name', 'Partial Ltd'], ['IBAN', 'GB00PARTIAL000000000']])
+  end
+
+  it 'does not resurrect a migrated account an admin deliberately soft-deleted' do
+    gateway
+    Spree::BankPayments::MigrateLegacyAccounts.call
+    gateway.reload.bank_accounts.sole.destroy
+
+    Spree::BankPayments::MigrateLegacyAccounts.call
+
+    expect(gateway.reload.bank_accounts).to be_empty
+    expect(gateway.bank_accounts.with_deleted.count).to eq(1)
+  end
+
+  it 'uses the store default currency, not the process-wide config, on a multi-store install' do
+    store = create(:store, default_currency: 'EUR')
+    eur_gateway = create(:bank_transfer_gateway, store: store).tap do |g|
+      g.preferred_account_iban = 'GB00EUR000000000000000'
+      g.save!
+    end
+
+    Spree::BankPayments::MigrateLegacyAccounts.call
+
+    expect(eur_gateway.reload.bank_accounts.sole.currency).to eq('EUR')
+    expect(Spree::Config[:currency].upcase).not_to eq('EUR')
+  end
 end
