@@ -35,4 +35,33 @@ FactoryBot.define do
     sequence(:external_id) { |n| "TKF-TEST#{n.to_s.rjust(2, '0')}" }
     expires_at { 3.days.from_now }
   end
+
+  factory :bank_payments_bank_account, class: 'Spree::BankPayments::BankAccount' do
+    association :payment_method, factory: :bank_transfer_gateway
+    currency { 'GBP' }
+    offered { true }
+    active { true }
+    details do
+      [
+        {
+          'label' => 'UK payments',
+          'schemes' => %w[faster bacs chaps],
+          'beneficiary_name' => 'Example Store Ltd',
+          'fields' => [
+            { 'label' => 'Sort code', 'value' => '04-00-75' },
+            { 'label' => 'Account number', 'value' => '12345678' }
+          ]
+        },
+        {
+          'label' => 'International',
+          'schemes' => %w[swift],
+          'beneficiary_name' => 'Example Store Ltd',
+          'fields' => [
+            { 'label' => 'IBAN', 'value' => 'GB00REVO00000000000000' },
+            { 'label' => 'BIC', 'value' => 'REVOGB21' }
+          ]
+        }
+      ]
+    end
+  end
 end
