@@ -20,6 +20,19 @@ module AypexBankTransfer
         end
 
         expire_for(payment_method)
+      rescue StandardError => e
+        # One payment method's failure (a bad state transition, a reconciler
+        # gem gone missing, anything) must not wedge expiry for every other
+        # payment method processed after it in this loop.
+        Spree::Events.publish(
+          'bank_transfer.expiry_failed',
+          {
+            payment_method_id: payment_method.id,
+            error: e.message
+          }
+        )
+        Rails.error.report(e, source: 'aypex_bank_transfer.expire_sessions')
+        next
       end
     end
 
@@ -31,9 +44,15 @@ module AypexBankTransfer
         where(payment_method_id: payment_method.id).
         where(expires_at: ...Time.current).
         find_each do |session|
+          # cancel_order runs first, session.expire! last: Spree's state
+          # machine publishes `payment_session.expired` synchronously from
+          # inside session.expire!, so it must be the final statement in the
+          # transaction — if cancel_order were to raise after it, the DB
+          # rollback couldn't unwind an event a subscriber may have already
+          # acted on. Same ordering rationale as ApplyTransfer (Task 6).
           ActiveRecord::Base.transaction do
-            session.expire!
             cancel_order(session.order)
+            session.expire!
           end
 
           Spree::Events.publish('bank_transfer.expired', session.notification_payload)
@@ -41,7 +60,7 @@ module AypexBankTransfer
     end
 
     def cancel_order(order)
-      return if order.blank? || order.canceled?
+      return unless order&.allow_cancel?
 
       order.cancel!
     end

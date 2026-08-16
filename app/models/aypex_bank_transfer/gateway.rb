@@ -81,7 +81,7 @@ module AypexBankTransfer
     # The Manual reconciler is always healthy because it never polls.
     def reconciler_healthy?
       return false unless reconciler.healthy?
-      return true if reconciler.is_a?(Reconcilers::Manual)
+      return true if reconciler.instance_of?(Reconcilers::Manual)
 
       reconciler_state.healthy?(preferred_poll_interval_minutes)
     end
