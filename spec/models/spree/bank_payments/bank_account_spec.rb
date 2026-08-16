@@ -54,6 +54,46 @@ RSpec.describe Spree::BankPayments::BankAccount do
     expect { other.save! }.not_to raise_error
   end
 
+  # Spree::PaymentMethod is acts_as_paranoid. Gateway#bank_accounts has
+  # `dependent: :destroy`, and paranoia's restore_associated_records only
+  # restores associations that are BOTH `dependent: :destroy` AND paranoid
+  # themselves -- so BankAccount must be paranoid too, or a soft-deleted
+  # gateway hard-deletes its accounts with no way back.
+  describe 'soft-delete cascade (paranoid parent, paranoid child)' do
+    it 'soft-deletes the account, rather than destroying it, when the payment method is soft-deleted' do
+      account = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+
+      payment_method.destroy
+
+      expect(Spree::BankPayments::BankAccount.where(id: account.id)).to be_empty
+      expect(Spree::BankPayments::BankAccount.with_deleted.find(account.id)).to be_present
+      expect(account.reload.deleted_at).to be_present
+    end
+
+    # paranoia's restore_associated_records restores only associations that
+    # are `dependent: :destroy` AND paranoid, calling
+    # `record.restore(recursive: true, ...)` on each -- so `recursive: true`
+    # on the gateway is what brings the accounts back, not a default.
+    it 'recovers the account when the payment method is restored recursively' do
+      account = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+      payment_method.destroy
+
+      payment_method.restore(recursive: true)
+
+      expect(account.reload.deleted_at).to be_nil
+      expect(Spree::BankPayments::BankAccount.where(id: account.id)).to include(account)
+    end
+
+    it 'does NOT recover the account when the payment method is restored non-recursively' do
+      account = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+      payment_method.destroy
+
+      payment_method.restore
+
+      expect(account.reload.deleted_at).to be_present
+    end
+  end
+
   describe '.for_currency' do
     it 'finds an uppercase-stored account from a lowercase lookup' do
       account = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP')

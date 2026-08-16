@@ -40,10 +40,20 @@ RSpec.describe Spree::BankPayments::Gateway, 'accounts' do
 
   # 5.2.0 is a minor: removing a public method would break a host's custom view
   # or another extension.
-  it 'keeps #bank_details as a deprecated shim' do
+  it 'keeps #bank_details as a deprecated shim that actually warns' do
     create(:bank_payments_bank_account, payment_method: gateway, currency: Spree::Config[:currency], offered: true)
+
+    expect(Spree::Deprecation).to receive(:warn).with(/bank_details.*bank_details_for/)
 
     expect(gateway).to respond_to(:bank_details)
     expect(gateway.bank_details).to be_an(Array)
+  end
+
+  # The upgrade-day case: a host on 5.1.1 upgrades to 5.2.0 with no
+  # BankAccount configured yet, and something -- a custom view, another
+  # extension -- still calls the deprecated shim. It must degrade to "no
+  # details to show", never raise.
+  it 'returns an empty array from #bank_details when no account is offered' do
+    expect(gateway.bank_details).to eq([])
   end
 end

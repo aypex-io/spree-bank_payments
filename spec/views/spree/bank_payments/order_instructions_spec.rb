@@ -38,15 +38,6 @@ RSpec.describe 'spree/bank_payments/_order_instructions', type: :view do
     end
   end
 
-  it 'shows the bank details for an offered account matching the session currency' do
-    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
-
-    render partial: 'spree/bank_payments/order_instructions',
-           locals: { payment_session: payment_session }
-
-    expect(rendered).to include('GB00REVO00000000000000')
-  end
-
   it 'renders every detail set, labelled' do
     create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
 

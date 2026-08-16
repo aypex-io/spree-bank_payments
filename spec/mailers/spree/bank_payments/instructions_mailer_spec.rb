@@ -5,7 +5,12 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
   let!(:bank_account) do
     create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
   end
-  let(:order) { create(:completed_order_with_totals) }
+  # Pinned to GBP: the session factory below defaults to GBP too, and a USD
+  # order could never actually carry this payment method now that
+  # Gateway#available_for_order? requires an offered account matching the
+  # order's currency. Leaving this at the USD factory default made the
+  # fixture look currency-agnostic when it silently wasn't.
+  let(:order) { create(:completed_order_with_totals, currency: 'GBP') }
   let(:session) do
     create(:bank_transfer_payment_session, order: order, payment_method: payment_method)
   end
@@ -52,6 +57,13 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
 
     it 'includes the payment reference in the body' do
       expect(mail.body.encoded).to include(session.reference)
+    end
+
+    it 'includes every detail set, labelled, in the body' do
+      expect(mail.body.encoded).to include('UK payments')
+      expect(mail.body.encoded).to include('International')
+      expect(mail.body.encoded).to include('04-00-75')
+      expect(mail.body.encoded).to include('GB00REVO00000000000000')
     end
   end
 end

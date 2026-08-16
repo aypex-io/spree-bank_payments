@@ -4,6 +4,13 @@ module Spree
     # quoted it; every active account is watched regardless, which is what makes
     # switching accounts safe for orders already in flight.
     class BankAccount < Base
+      # Spree::PaymentMethod (our belongs_to parent) is acts_as_paranoid.
+      # Without this, Gateway's `dependent: :destroy` on #bank_accounts would
+      # hard-delete these rows the moment an admin soft-deletes the gateway --
+      # restoring the gateway a day later would not bring the coordinates
+      # back. Spree::PaymentSession is paranoid for the same reason.
+      acts_as_paranoid
+
       belongs_to :payment_method, class_name: 'Spree::PaymentMethod'
 
       validates :currency, presence: true, format: { with: /\A[A-Za-z]{3}\z/ }
