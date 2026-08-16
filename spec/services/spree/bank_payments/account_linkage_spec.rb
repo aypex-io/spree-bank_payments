@@ -117,4 +117,24 @@ RSpec.describe 'bank account linkage' do
 
     expect(transfer).to be_unmatched
   end
+
+  # The advisory guard is symmetric: it only compares when BOTH sides
+  # recorded an account. A transfer recording an account against a session
+  # that has none (the mirror of the already-covered
+  # session-present/transfer-nil case) must still auto-apply.
+  it 'still auto-applies when the transfer recorded an account but the session has none' do
+    session = gateway.create_payment_session(order: order)
+    session.update!(bank_account_id: nil)
+
+    data = Spree::BankPayments::TransferData.new(
+      provider: 'test', provider_transaction_id: 'TX-7', amount: session.amount, currency: 'GBP',
+      reference: session.reference, payer_name: 'Jane', occurred_at: Time.current, raw: {},
+      provider_account_id: 'acc-gbp'
+    )
+
+    transfer = Spree::BankPayments::IngestTransfer.new(payment_method: gateway, transfer_data: data).call
+
+    expect(transfer).to be_applied
+    expect(transfer.bank_account_id).to eq(gbp.id)
+  end
 end

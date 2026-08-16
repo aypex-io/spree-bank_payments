@@ -38,6 +38,31 @@ RSpec.describe Spree::BankPayments::Gateway, 'accounts' do
     expect(gateway.available_for_order?(order)).to be(true)
   end
 
+  # Settlement must survive the merchant retiring the only account in the
+  # order's currency after the order already quoted this gateway.
+  it 'is available for an order that already holds a same-currency session, even with no account offered' do
+    account = create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP', offered: true)
+    order = create(:order_with_line_items, currency: 'GBP')
+    gateway.create_payment_session(order: order)
+    account.update!(offered: false)
+
+    expect(gateway.available_for_order?(order)).to be(true)
+  end
+
+  # Pins the currency scope: a cart quoted in GBP and then switched to a
+  # currency with no offered account must not inherit availability from the
+  # order's own stale GBP session -- an empty instructions block with
+  # nowhere to send money is worse than not listing the method at all.
+  it 'is unavailable once the same order switches to a currency with no offered account' do
+    create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP', offered: true)
+    order = create(:order_with_line_items, currency: 'GBP')
+    gateway.create_payment_session(order: order)
+
+    order.update!(currency: 'USD')
+
+    expect(gateway.available_for_order?(order)).to be(false)
+  end
+
   # 5.2.0 is a minor: removing a public method would break a host's custom view
   # or another extension.
   it 'keeps #bank_details as a deprecated shim that actually warns' do

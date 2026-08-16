@@ -165,8 +165,16 @@ module Spree
         # transfer can arrive days after the quote -- long enough for an
         # admin to switch or retire accounts in between. Checkout listing is
         # unaffected: a brand-new order has no session yet, so this branch
-        # never widens which methods a fresh checkout can select.
-        order.payment_sessions.exists?(payment_method_id: id, type: payment_session_class.name)
+        # never widens which methods a fresh checkout can select. Scoped to
+        # the order's *current* currency: a cart quoted in GBP and then
+        # switched to USD must not resurrect availability for a currency
+        # that never had an offered account -- `bank_details_for('USD')`
+        # would return an empty instructions block.
+        order.payment_sessions.exists?(
+          payment_method_id: id,
+          type: payment_session_class.name,
+          currency: order.currency
+        )
       end
 
       # @deprecated Use #bank_details_for(currency).
