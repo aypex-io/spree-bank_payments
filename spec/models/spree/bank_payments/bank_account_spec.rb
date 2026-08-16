@@ -59,6 +59,36 @@ RSpec.describe Spree::BankPayments::BankAccount do
   # restores associations that are BOTH `dependent: :destroy` AND paranoid
   # themselves -- so BankAccount must be paranoid too, or a soft-deleted
   # gateway hard-deletes its accounts with no way back.
+  # The partial unique indexes were written when this table had no
+  # deleted_at column, i.e. when "destroyed" meant "gone". Now that
+  # BankAccount is paranoid, a soft-deleted row still exists and still
+  # satisfies `where: 'offered'` / `where: 'provider_account_id IS NOT
+  # NULL'` unless the predicate also excludes it -- a live index checking a
+  # dead row. Reachable through the ordinary admin path: Task 9's destroy
+  # action soft-deletes, so an admin who deletes the GBP account and
+  # creates a replacement would hit RecordNotUnique against a row they
+  # cannot see.
+  describe 'uniqueness ignores soft-deleted rows' do
+    it 'allows a new offered account for a currency whose previous offered account was soft-deleted' do
+      old = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+      old.destroy
+
+      replacement = build(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+
+      expect { replacement.save! }.not_to raise_error
+    end
+
+    it 'allows a new account to reuse a provider_account_id that was soft-deleted' do
+      old = create(:bank_payments_bank_account, payment_method: payment_method, provider_account_id: 'acc-1')
+      old.destroy
+
+      resynced = build(:bank_payments_bank_account, payment_method: payment_method, provider_account_id: 'acc-1',
+                        currency: 'EUR')
+
+      expect { resynced.save! }.not_to raise_error
+    end
+  end
+
   describe 'soft-delete cascade (paranoid parent, paranoid child)' do
     it 'soft-deletes the account, rather than destroying it, when the payment method is soft-deleted' do
       account = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
