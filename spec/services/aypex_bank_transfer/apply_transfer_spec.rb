@@ -2,9 +2,11 @@ require 'spec_helper'
 
 RSpec.describe AypexBankTransfer::ApplyTransfer do
   let(:payment_method) { create(:bank_transfer_gateway) }
-  # See ingest_transfer_spec.rb: pinned so order.total == the 25.00 amount
-  # below, otherwise payment_state can never reach 'paid'.
-  let(:order) { create(:order_with_line_items, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
+  # See ingest_transfer_spec.rb: :completed_order_with_totals is the
+  # representative fixture (the order is checkout-complete before the
+  # customer sees transfer instructions), pinned so order.total == the
+  # 25.00 amount below, otherwise payment_state can never reach 'paid'.
+  let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
   let(:session) do
     create(:bank_transfer_payment_session,
            order: order, payment_method: payment_method,

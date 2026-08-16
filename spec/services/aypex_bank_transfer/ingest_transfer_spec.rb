@@ -2,13 +2,17 @@ require 'spec_helper'
 
 RSpec.describe AypexBankTransfer::IngestTransfer do
   let(:payment_method) { create(:bank_transfer_gateway) }
-  # line_items_price/shipment_cost pinned so order.total == the hardcoded
-  # session/transfer amount below (25.00). The factory defaults (10.00 item
-  # + 100 shipment = 110.00 total) would make payment_state unreachably
-  # 'paid' for a 25.00 payment — that mismatch is a fixture bug, not a
-  # matching/application bug, so it's fixed here rather than weakening the
-  # `be_applied` / `payment_state == 'paid'` assertions below.
-  let(:order) { create(:order_with_line_items, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
+  # A bank-transfer order is checkout-complete before the customer ever
+  # sees the transfer instructions (they render on the confirmation page),
+  # so :completed_order_with_totals is the representative fixture, not
+  # :order_with_line_items. line_items_price/shipment_cost are pinned so
+  # order.total == the hardcoded session/transfer amount below (25.00) —
+  # the factory defaults (10.00 item + 100 shipment = 110.00 total) would
+  # make payment_state unreachably 'paid' for a 25.00 payment. That
+  # mismatch is a fixture bug, not a matching/application bug, so it's
+  # fixed here rather than weakening the `be_applied` /
+  # `payment_state == 'paid'` assertions below.
+  let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
   let!(:session) do
     create(:bank_transfer_payment_session,
            order: order, payment_method: payment_method,
@@ -63,6 +67,12 @@ RSpec.describe AypexBankTransfer::IngestTransfer do
       expect { ingest }.not_to change(Spree::Payment, :count)
       expect(AypexBankTransfer::IncomingTransfer.count).to eq(1)
     end
+
+    it 'does not re-enter application on replay' do
+      ingest
+      expect(AypexBankTransfer::ApplyTransfer).not_to receive(:call)
+      ingest
+    end
   end
 
   describe 'refuses to auto-apply' do
@@ -103,6 +113,8 @@ RSpec.describe AypexBankTransfer::IngestTransfer do
 
       expect { ingest }.to raise_error(StandardError, 'boom')
       expect(AypexBankTransfer::IncomingTransfer.last).to be_unmatched
+      expect(session.reload.status).to eq('pending')
+      expect(Spree::Payment.count).to eq(0)
     end
   end
 end

@@ -16,18 +16,16 @@ module AypexBankTransfer
 
     def call
       ActiveRecord::Base.transaction do
+        # Payment completes before the session. Spree::PaymentSession uses
+        # publishes_lifecycle_events, which publishes synchronously inside
+        # this transaction — completing the session first would let a
+        # "session completed" event (plausibly a customer receipt) escape
+        # before we know the payment itself will actually complete. If
+        # payment.complete! raises, the DB rolls back but that event
+        # cannot be recalled.
         payment = payment_session.find_or_create_payment!
-        payment_session.complete! unless payment_session.completed?
         payment.complete! unless payment.completed?
-
-        # Spree::Payment only recalculates payment_state on save when the
-        # order itself is already checkout-complete. A bank transfer can
-        # land before that (or well after), so we recompute and persist it
-        # explicitly rather than relying on that implicit, gated callback.
-        order = payment_session.order
-        order.updater.update_payment_total
-        order.updater.update_payment_state
-        order.persist_totals
+        payment_session.complete! unless payment_session.completed?
 
         attrs = { state: 'applied', payment_session: payment_session }
         if applied_by
