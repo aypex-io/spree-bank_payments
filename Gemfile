@@ -12,3 +12,12 @@ gem 'spree_admin'
 
 gem 'pg'
 gem 'propshaft'
+
+# Same gap as spree_admin above: spree_dev_tools depends on this transitively
+# (for `assigns` in controller specs) but never requires it, and it's a
+# Railtie -- requiring it after boot is too late to hook in. List it
+# explicitly so Bundler.require pulls it in before Rails.application
+# initializes.
+group :test do
+  gem 'rails-controller-testing'
+end

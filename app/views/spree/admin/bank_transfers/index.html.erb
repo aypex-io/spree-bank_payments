@@ -1,0 +1,42 @@
+<%# app/views/spree/admin/bank_transfers/index.html.erb %>
+<h1>Unmatched bank transfers</h1>
+
+<% if @transfers.empty? %>
+  <p>Nothing waiting. Every observed transfer has been matched or ignored.</p>
+<% else %>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Received</th><th>Amount</th><th>Payer</th>
+        <th>Reference as sent</th><th>Suggested orders</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @transfers.each do |transfer| %>
+        <tr>
+          <td><%= l(transfer.occurred_at, format: :short) %></td>
+          <td><%= transfer.money.to_s %></td>
+          <td><%= transfer.payer_name %></td>
+          <td><code><%= transfer.reference_raw.presence || '—' %></code></td>
+          <td>
+            <% Array(@suggestions[transfer.id]).each do |suggestion| %>
+              <%= form_tag spree.apply_admin_bank_transfer_path(transfer), method: :put, class: 'd-inline' do %>
+                <%= hidden_field_tag :payment_session_id, suggestion.id %>
+                <%= submit_tag "#{suggestion.order.number} — #{suggestion.money}", class: 'btn btn-sm btn-primary' %>
+              <% end %>
+            <% end %>
+            <% if Array(@suggestions[transfer.id]).empty? %>—<% end %>
+          </td>
+          <td>
+            <%= form_tag spree.ignore_admin_bank_transfer_path(transfer), method: :put do %>
+              <%= text_field_tag :reason, nil, placeholder: 'Reason', class: 'form-control form-control-sm d-inline w-auto' %>
+              <%= submit_tag 'Ignore', class: 'btn btn-sm btn-outline-secondary' %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+
+  <%== pagy_nav(@pagy) %>
+<% end %>
