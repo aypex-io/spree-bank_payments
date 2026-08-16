@@ -141,7 +141,7 @@ RSpec.describe Spree::BankPayments::SyncAccounts do
     expect(Spree::BankPayments::BankAccount.count).to eq(0)
   end
 
-  it 'updates currency and details on an existing account without touching offered or active' do
+  it 'reactivates a returning account without touching offered' do
     existing = create(:bank_payments_bank_account, payment_method: gateway,
                       provider_account_id: 'acc-1', currency: 'GBP', offered: true, active: false)
     stub_sync([account_data('acc-1', 'EUR')])
@@ -152,5 +152,23 @@ RSpec.describe Spree::BankPayments::SyncAccounts do
     expect(existing.currency).to eq('EUR')
     expect(existing).to be_offered
     expect(existing).to be_active
+  end
+
+  # Fix 1: the partial unique index deliberately allows a soft-deleted row
+  # and a live row to share a provider_account_id. The soft-delete skip must
+  # not shadow the live row -- that would drop it out of `seen` and land it
+  # in :deactivate, silently withdrawing a currency the admin re-added.
+  it 'updates the live account rather than deactivating it when a soft-deleted row shares its provider id' do
+    deleted = create(:bank_payments_bank_account, payment_method: gateway, provider_account_id: 'acc-1',
+                      currency: 'GBP')
+    deleted.destroy
+    live = create(:bank_payments_bank_account, payment_method: gateway, provider_account_id: 'acc-1',
+                  currency: 'GBP', offered: true)
+    stub_sync([account_data('acc-1')])
+
+    described_class.new(payment_method: gateway).apply!
+
+    expect(live.reload).to be_active
+    expect(live).to be_offered
   end
 end

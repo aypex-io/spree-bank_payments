@@ -25,15 +25,22 @@ module Spree
 
         usable, unusable = reported.partition { |a| usable?(a) }
 
+        by_id = existing.index_by(&:provider_account_id)
+
         # A soft-deleted account is an admin's deliberate decision to
         # withdraw it (see MigrateLegacyAccounts), not an absence for sync to
         # silently refill just because the provider still reports it. Route
         # these to :skipped rather than :create so they're visible, not lost.
+        # Scoped to ids with no *live* counterpart: the partial unique index
+        # deliberately allows a soft-deleted row and a live row to share a
+        # provider id, and a soft-delete on the old row must not shadow a
+        # live row an admin re-added under the same id -- that would pull
+        # the live row's id out of `seen` below and deactivate it.
         soft_deleted_ids = payment_method.bank_accounts.only_deleted.pluck(:provider_account_id).to_set
+        soft_deleted_ids -= by_id.keys
         usable, resurrections = usable.partition { |a| soft_deleted_ids.exclude?(a.provider_account_id) }
 
         seen = usable.map(&:provider_account_id)
-        by_id = existing.index_by(&:provider_account_id)
 
         {
           create: usable.reject { |a| by_id.key?(a.provider_account_id) },
