@@ -1,0 +1,44 @@
+<%# Admin configuration guide for Spree::BankPayments::Gateway. Spree's
+    payment_methods/_form.html.erb renders this partial with only `f:` (the
+    form builder) as a local -- there is no `payment_method:` local here --
+    so the gateway instance comes from `f.object`.
+
+    Must render for a freshly configured store that has never polled (nil
+    last_successful_run_at) -- reconciler_healthy? and reconciler_state are
+    both safe to call in that state. %>
+<% payment_method = f.object %>
+<% state = payment_method.reconciler_state %>
+<% healthy = payment_method.reconciler_healthy? %>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h5>Webhook URL</h5>
+    <p>Paste this into your bank's webhook settings:</p>
+    <pre><%= payment_method.webhook_url %></pre>
+
+    <h5>Reconciler</h5>
+    <ul class="list-unstyled">
+      <li><strong>Adapter:</strong> <%= payment_method.preferred_reconciler %></li>
+      <li>
+        <strong>Status:</strong>
+        <span class="badge <%= healthy ? 'bg-success' : 'bg-danger' %>">
+          <%= healthy ? 'Healthy' : 'Unhealthy — expiry paused' %>
+        </span>
+      </li>
+      <li><strong>Last successful poll:</strong>
+        <%= state.last_successful_run_at ? l(state.last_successful_run_at, format: :short) : 'never' %>
+      </li>
+      <% if state.consecutive_failures.positive? %>
+        <li><strong>Consecutive failures:</strong> <%= state.consecutive_failures %></li>
+        <li><strong>Last error:</strong> <code><%= state.last_error %></code></li>
+      <% end %>
+    </ul>
+
+    <% unless healthy %>
+      <div class="alert alert-warning mb-0">
+        Order expiry is paused while the reconciler is unhealthy. Unpaid orders
+        will not be cancelled until reconciliation resumes.
+      </div>
+    <% end %>
+  </div>
+</div>

@@ -1,6 +1,6 @@
 en:
   spree:
-    bank_transfer:
+    bank_payments:
       discount_label: "Bank Transfer discount (%{percent}%)"
       payment_method_label: "Bank Transfer — save %{percent}%"
       pay_within: "Please transfer within %{days} days"

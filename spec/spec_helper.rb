@@ -2,7 +2,7 @@ ENV['RAILS_ENV'] = 'test'
 
 require File.expand_path('../dummy/config/environment.rb', __FILE__)
 require 'spree_dev_tools/rspec/spec_helper'
-require 'spree/bank_transfer/factories'
+require 'spree/bank_payments/factories'
 
 # spree_admin is a gemspec *runtime* dependency, not a direct Gemfile entry,
 # and Bundler.require(*Rails.groups) only auto-requires gems declared

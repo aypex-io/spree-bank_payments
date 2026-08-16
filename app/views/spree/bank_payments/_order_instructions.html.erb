@@ -1,0 +1,73 @@
+<%# Read by the customer to make their transfer -- from the order confirmation
+    page and the "instructions ready" email. `payment_session` is a
+    Spree::PaymentSessions::BankTransfer.
+
+    The reference, amount, and deadline are the functional core of this
+    partial: auto-matching depends entirely on the customer quoting the
+    reference correctly, so it must stay visually unmissable. %>
+<% bank_details = payment_session.payment_method.bank_details %>
+
+<section class="bank-transfer-instructions">
+  <div class="bank-transfer-instructions__highlight">
+    <h2><%= Spree.t('bank_payments.reference') %></h2>
+
+    <%# The reference is a plain text node inside <code> either way, so it
+        stays selectable/copyable by hand if JS is unavailable -- the button
+        is a convenience on top, not the only way to copy it. Inline
+        onclick, no Stimulus/importmap/build step: this gem ships no
+        app/javascript, and a data-controller with no matching controller
+        class is silently inert in a host app. %>
+    <p class="bank-transfer-reference">
+      <code class="bank-transfer-reference__code"><%= payment_session.reference %></code>
+      <button
+        type="button"
+        class="bank-transfer-reference__copy"
+        data-copy-label="<%= Spree.t('bank_payments.copy') %>"
+        data-copy-done-label="<%= Spree.t('bank_payments.copied') %>"
+        onclick="
+          var btn = this;
+          var text = btn.previousElementSibling.textContent;
+          var done = btn.getAttribute('data-copy-done-label');
+          var reset = btn.getAttribute('data-copy-label');
+          var restore = function () { btn.textContent = reset; };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+              btn.textContent = done;
+              setTimeout(restore, 2000);
+            });
+          }
+        "
+      ><%= Spree.t('bank_payments.copy') %></button>
+    </p>
+
+    <p class="bank-transfer-reference-help"><%= Spree.t('bank_payments.reference_help') %></p>
+
+    <dl class="bank-transfer-amount">
+      <dt><%= Spree.t('bank_payments.amount_to_transfer') %></dt>
+      <dd class="bank-transfer-amount__value"><%= payment_session.money.to_s %></dd>
+
+      <dt><%= Spree.t('bank_payments.transfer_by') %></dt>
+      <dd><%= l(payment_session.expires_at.to_date, format: :long) if payment_session.expires_at %></dd>
+    </dl>
+  </div>
+
+  <dl>
+    <dt><%= Spree.t('bank_payments.account_name') %></dt>
+    <dd><%= bank_details[:account_name] %></dd>
+
+    <% if bank_details[:iban].present? %>
+      <dt><%= Spree.t('bank_payments.iban') %></dt><dd><%= bank_details[:iban] %></dd>
+    <% end %>
+    <% if bank_details[:bic].present? %>
+      <dt><%= Spree.t('bank_payments.bic') %></dt><dd><%= bank_details[:bic] %></dd>
+    <% end %>
+    <% if bank_details[:sort_code].present? %>
+      <dt><%= Spree.t('bank_payments.sort_code') %></dt><dd><%= bank_details[:sort_code] %></dd>
+    <% end %>
+    <% if bank_details[:account_number].present? %>
+      <dt><%= Spree.t('bank_payments.account_number') %></dt><dd><%= bank_details[:account_number] %></dd>
+    <% end %>
+  </dl>
+
+  <p><%= Spree.t('bank_payments.dispatch_note') %></p>
+</section>
