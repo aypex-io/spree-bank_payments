@@ -21,6 +21,12 @@ module Spree
         @suggestions = @transfers.each_with_object({}) do |transfer, acc|
           acc[transfer.id] = AypexBankTransfer::SuggestMatches.new(transfer: transfer).call
         end
+
+        # Set only by #apply's mismatch refusal (see I3). Identifies the one
+        # transfer/session pair the admin has already been shown the numbers
+        # for and may now confirm.
+        @confirm_transfer_id = params[:confirm_transfer_id].presence&.to_i
+        @confirm_payment_session_id = params[:confirm_payment_session_id].presence&.to_i
       end
 
       # "Record a received transfer". The Manual reconciler -- the default,
@@ -111,11 +117,19 @@ module Spree
           return redirect_to spree.admin_bank_transfers_path
         end
 
+        # I3: the refusal now hands back the pair that needs confirming, and
+        # the queue renders a distinct, explicitly-labelled confirm button
+        # only for that pair. Confirmation is therefore a genuine second
+        # step -- a deliberate act after seeing the numbers -- rather than
+        # something the view pre-granted before the admin looked at anything.
         if money_mismatch?(payment_session) && !confirmed_mismatch?
           flash[:error] = "Amount/currency mismatch: the transfer is #{@transfer.money}, " \
                            "the session expects #{payment_session.money}. " \
                            'Confirm to apply anyway.'
-          return redirect_to spree.admin_bank_transfers_path
+          return redirect_to spree.admin_bank_transfers_path(
+            confirm_transfer_id: @transfer.id,
+            confirm_payment_session_id: payment_session.id
+          )
         end
 
         AypexBankTransfer::ApplyTransfer.call(

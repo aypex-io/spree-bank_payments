@@ -50,6 +50,69 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
     end
   end
 
+  # I3. The view used to pre-fill `confirm_mismatch`, satisfying the
+  # controller's guard before the admin saw anything, and the only remaining
+  # friction was `data: { confirm: }` -> data-confirm, which Turbo (and Spree
+  # 5.6 admin is Turbo) ignores completely. So a £250 transfer could be
+  # applied to a £25 order in one click, silently.
+  describe 'mismatch confirmation in the queue view' do
+    render_views
+
+    # A mismatched suggestion can only reach the view via the fuzzy payer-name
+    # path -- amount_matches only ever returns equal amounts.
+    let(:mismatched_session) do
+      create(:bank_transfer_payment_session,
+             order: order, payment_method: payment_method, amount: 20.00, currency: 'GBP')
+    end
+
+    before do
+      order.bill_address.update!(firstname: 'Jane', lastname: 'Doe')
+      mismatched_session
+      transfer
+      request.headers['Turbo-Frame'] = 'bank-transfers'
+    end
+
+    it 'does not pre-grant confirmation on the mismatch form' do
+      get :index
+
+      expect(response.body).to include('Amount/currency mismatch')
+      expect(response.body).not_to include('confirm_mismatch')
+    end
+
+    it 'uses the Turbo confirmation attribute, not the rails-ujs one Turbo ignores' do
+      get :index
+
+      expect(response.body).to include('data-turbo-confirm')
+      expect(response.body).not_to include('data-confirm=')
+    end
+
+    it 'offers an explicit confirm control only for the pair just refused' do
+      get :index, params: {
+        confirm_transfer_id: transfer.id, confirm_payment_session_id: mismatched_session.id
+      }
+
+      expect(response.body).to include('confirm_mismatch')
+      expect(response.body).to include('Yes — apply')
+    end
+
+    it 'does not offer it for a different pair' do
+      get :index, params: {
+        confirm_transfer_id: transfer.id, confirm_payment_session_id: mismatched_session.id + 999
+      }
+
+      expect(response.body).not_to include('confirm_mismatch')
+    end
+
+    it 'shows no mismatch badge when only currency casing differs' do
+      mismatched_session.update!(amount: 25.00, currency: 'gbp')
+
+      get :index
+
+      expect(response.body).to include(order.number)
+      expect(response.body).not_to include('Amount/currency mismatch')
+    end
+  end
+
   describe 'PUT #apply' do
     it 'applies the transfer to the chosen session and records who did it' do
       put :apply, params: { id: transfer.id, payment_session_id: session_record.id }
@@ -131,6 +194,19 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
         expect(transfer).not_to be_applied
         expect(flash[:error]).to be_present
         expect(flash[:error]).to include('25').and include('20')
+      end
+
+      # The refusal must hand back the pair, otherwise confirmation is
+      # merely blocked and there is no way for an admin to deliberately
+      # proceed -- see the queue-view specs above for the other half.
+      it 'redirects back naming the pair that may now be confirmed' do
+        put :apply, params: { id: transfer.id, payment_session_id: mismatched_session.id }
+
+        expect(response).to redirect_to(
+          spree.admin_bank_transfers_path(
+            confirm_transfer_id: transfer.id, confirm_payment_session_id: mismatched_session.id
+          )
+        )
       end
 
       it 'applies once the mismatch is explicitly confirmed, and names both amounts in the flash beforehand' do
