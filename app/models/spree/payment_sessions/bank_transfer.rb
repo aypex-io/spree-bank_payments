@@ -15,9 +15,9 @@ module Spree
       # "fix" this into `active`.
       scope :open, -> { where(status: %w[pending processing]) }
 
-      def expired?
-        expires_at.present? && expires_at <= Time.current
-      end
+      # NB: #expired? is deliberately NOT redefined here -- it was a
+      # byte-identical copy of Spree::PaymentSession#expired?, which is
+      # inherited.
 
       def reference
         external_id

@@ -13,9 +13,10 @@ module AypexBankTransfer
       return transfer if transfer.applied?
 
       session = matching_session(transfer)
-      session ? ApplyTransfer.call(transfer: transfer, payment_session: session) : transfer
+      return transfer unless session
 
-      transfer
+      # ApplyTransfer returns the transfer it was handed.
+      ApplyTransfer.call(transfer: transfer, payment_session: session)
     end
 
     private
