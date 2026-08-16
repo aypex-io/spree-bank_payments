@@ -34,11 +34,15 @@ RSpec.shared_examples 'a bank transfer reconciler' do
     expect([true, false]).to include(reconciler.configured?)
   end
 
-  it 'returns an array of AccountData from #sync_accounts' do
+  it 'returns an array from #sync_accounts' do
     result = reconciler.sync_accounts
 
+    # Element-type checking is deliberately NOT done here: a reconciler with
+    # nothing to sync returns [], and `all(be_a(...))` passes vacuously
+    # against an empty array. See the
+    # 'a bank transfer reconciler that returns accounts' group below for
+    # the assertion that actually inspects element types.
     expect(result).to be_an(Array)
-    expect(result).to all(be_a(Spree::BankPayments::AccountData))
   end
 end
 
@@ -53,5 +57,19 @@ RSpec.shared_examples 'a bank transfer reconciler that returns transfers' do
     expect(result).not_to be_empty
     expect(result).to all(be_a(Spree::BankPayments::TransferData))
     expect(result.map(&:provider_transaction_id)).to all(be_present)
+  end
+end
+
+# Provider gems MUST include this in addition to the group above. The base group
+# cannot check element types: a provider with nothing to sync returns [], and
+# every element assertion against an empty array passes vacuously.
+RSpec.shared_examples 'a bank transfer reconciler that returns accounts' do
+  # Host spec must define `reconciler` whose #sync_accounts returns at least one account.
+  it 'returns AccountData instances carrying an identifying provider account id' do
+    result = reconciler.sync_accounts
+
+    expect(result).not_to be_empty
+    expect(result).to all(be_a(Spree::BankPayments::AccountData))
+    expect(result.map(&:provider_account_id)).to all(be_present)
   end
 end

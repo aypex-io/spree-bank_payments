@@ -198,13 +198,18 @@ contract methods:
 - `#healthy?` — boolean; feeds the health gate above
 - `#configured?` — boolean; whether credentials/settings are complete
 
+`Base` also provides `#sync_accounts`, returning `[]` by default — override
+it if your provider can enumerate accounts, returning an
+`Array<Spree::BankPayments::AccountData>`.
+
 Register it:
 
 ```ruby
 Spree::BankPayments::Reconcilers::Base.register('my_bank', MyBank::Reconciler)
 ```
 
-and run **both** shared example groups against it — not just the first one:
+and run the shared example groups against it — the base group plus
+whichever "returns ..." group(s) apply to your reconciler:
 
 ```ruby
 require 'spree/bank_payments/testing_support/reconciler_shared_examples'
@@ -214,12 +219,15 @@ RSpec.describe MyBank::Reconciler do
 
   it_behaves_like 'a bank transfer reconciler'
   it_behaves_like 'a bank transfer reconciler that returns transfers'
+  it_behaves_like 'a bank transfer reconciler that returns accounts'
 end
 ```
 
-The second group exists because the first can't check element types: a
-reconciler with nothing to poll legitimately returns `[]`, and any
-`all(be_a(...))` assertion passes vacuously against an empty array. The
-second group requires `#poll` to return at least one real `TransferData` and
-checks its shape — that's the only way to actually exercise the type
-contract.
+The "returns ..." groups exist because the base group can't check element
+types: a reconciler with nothing to poll or sync legitimately returns `[]`,
+and any `all(be_a(...))` assertion passes vacuously against an empty array.
+Each "returns ..." group requires the corresponding method to return at
+least one real value and checks its shape — that's the only way to actually
+exercise the type contract. Omit the accounts group if your reconciler
+genuinely can't enumerate accounts (e.g. a manual/no-op reconciler) — forcing
+it there would mean stubbing the class under test, which tests nothing.
