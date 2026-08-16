@@ -32,7 +32,83 @@ Add a Bank Transfer payment method in the Spree admin and set:
 | `expiry_days` | Days before an unpaid order is cancelled and restocked |
 | `discount_percent` | Percentage off `item_total` for paying by transfer |
 | `poll_interval_minutes` | How often the reconciler polls; drives the health gate |
-| `account_*` | Bank details shown to the customer |
+| `account_*` | **Deprecated.** Pre-5.2 flat bank details. On upgrade these are folded automatically into one offered `BankAccount` for the store's default currency (see below) — do not set them on a fresh 5.2+ install; use the bank accounts screen instead. |
+
+## Bank accounts and currencies
+
+As of 5.2.0, bank details live on `Spree::BankPayments::BankAccount` rows —
+one per currency you accept, not one flat set of preferences shared by
+every order regardless of currency.
+
+- **One account per currency.** Each account records a `currency` and one
+  or more *detail sets* (a local scheme and an international/SWIFT set are
+  both common). Multiple accounts can exist for the same currency, but at
+  most one can be **offered** at a time — the customer-facing one.
+- **Customers always see every detail set on the offered account** — local
+  and international both, side by side. The gem deliberately does **not**
+  infer which one a customer needs from their billing country: that would
+  require a maintained SEPA-membership list (and it changes), and guessing
+  wrong hides the details the customer actually needed, costing them a
+  bounced transfer or a correspondent fee with no explanation. Let them
+  choose; they know where they bank.
+- **Admin checklist:** the bank accounts screen under the payment method
+  lets an admin toggle at most one *offered* account per currency. This is
+  enforced by a partial unique database index
+  (`index_bp_bank_accounts_on_pm_and_currency_offered`), not just a form
+  validation — a second offered row for the same currency cannot exist,
+  even written directly against the database.
+- **Every synced account stays watched (polled or webhooked) regardless of
+  whether it is offered.** This is what makes switching the offered account
+  safe: quote a customer against GBP account A, later switch the offered
+  GBP account to B — new sessions quote B, but A is still polled, so a
+  transfer that arrives late into A still reconciles automatically against
+  the session it was actually quoted on. No cutover window, no "don't
+  switch until the last order clears."
+- **A currency with no offered account means bank transfer is not
+  available for that currency.** `available_for_order?` returns `false`
+  and the method drops out of checkout for that currency — unless the
+  order already holds an open session against this gateway in the same
+  currency, in which case availability is kept so that order can still be
+  paid. This is easy to reach by accident: **the first sync leaves every
+  account unchecked**, so bank transfer is unavailable in every currency
+  until an admin offers at least one account. The admin screen states this
+  plainly.
+- **Two sync triggers:**
+  1. A **"Sync from &lt;provider&gt;"** button in the payment method admin,
+     which always shows a diff for confirmation before applying it.
+  2. **Consent re-approval**, for providers whose credentials need periodic
+     re-authorisation (e.g. an OAuth consent that expires every ~90 days).
+     A provider gem can call `SyncAccounts.new(payment_method:).apply!(additive_only: true)`
+     from its callback handler; `additive_only` applies new accounts and
+     refreshed details immediately but always skips deactivations, since a
+     currency should never be withdrawn from the storefront mid-redirect
+     with nobody looking at a diff.
+
+  In both cases, **sync never sets `offered`** (that decision stays with a
+  human, including on the very first sync) and **never touches
+  `bank_account_id` on an existing session** — a historical quote is
+  immutable, because changing what a customer was told after the fact
+  makes a dispute unwinnable.
+- **Soft-deleted accounts are not resurrected by sync.** `BankAccount` is
+  `acts_as_paranoid`; deleting one from the admin is a soft delete, so a
+  session that already quoted it keeps rendering the coordinates. If a
+  later sync reports the same provider account again, it is **not**
+  silently recreated — it's surfaced as `skipped` in the sync diff, visible
+  rather than silently reappearing behind an admin's back.
+- **Failed or empty sync leaves every account untouched.** If
+  `sync_accounts` raises, times out, or returns an empty array while
+  accounts already exist, the whole sync aborts with no writes — an auth
+  failure must never be read as "every account disappeared."
+
+### Writing a provider's `sync_accounts`
+
+`sync_accounts` returns `Array<Spree::BankPayments::AccountData>`, each
+carrying `provider_account_id`, `currency`, and `details` in the same
+normalised detail-set shape `BankAccount#details` stores — an ordered list
+of `{ label:, schemes:, beneficiary_name:, fields: [[label, value], ...] }`
+hashes, never the provider's raw response shape. See "Writing a
+reconciler" below for the full contract, including the shared example
+group that exercises this method's return type.
 
 ## The admin queue and the manual workflow
 

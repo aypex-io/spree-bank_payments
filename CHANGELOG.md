@@ -2,6 +2,110 @@
 
 All notable changes to this project are documented in this file.
 
+## 5.2.0
+
+### BREAKING CHANGE
+
+**`Gateway#bank_details` now returns `Array<Spree::BankPayments::DetailSet>`,
+not a `Hash`.** The method was kept — nothing was renamed or removed — but a
+host reading it as a `Hash` will get a `TypeError`, not a missing-method
+error, the moment it upgrades:
+
+```ruby
+# 5.1.1
+gateway.bank_details[:iban]      #=> "GB00REVO00000000000000"
+
+# 5.2.0
+gateway.bank_details[:iban]      #=> TypeError: no implicit conversion of Symbol into Integer
+gateway.bank_details[0].fields   #=> [["IBAN", "GB00REVO00000000000000"], ["BIC", "REVOGB21"]]
+```
+
+Two alternatives were considered and rejected:
+
+- **Back-mapping the first detail set onto the old five keys** (`:name`,
+  `:iban`, `:bic`, `:sort_code`, `:number`). Rejected: detail-set labels are
+  arbitrary per country (a US account has a routing number, not a sort
+  code), so there is no general mapping back onto five fixed keys. A
+  silently wrong `Hash` — one that quietly drops or mislabels fields — is
+  worse than a loud `TypeError` a host discovers in CI.
+- **Bumping to 6.0.0 instead of 5.2.0.** Rejected: this gem's major version
+  tracks Spree's major version (`spree-bank_payments` 5.x supports Spree
+  5.x). A 6.0.0 release would falsely advertise Spree 6 support that
+  doesn't exist.
+
+**Fix:** call `bank_details_for(currency)` instead, and iterate the returned
+detail sets:
+
+```ruby
+gateway.bank_details_for(order.currency).each do |detail_set|
+  detail_set.label   #=> "UK payments"
+  detail_set.fields   #=> [["Sort code", "04-00-75"], ["Account number", "12345678"]]
+end
+```
+
+`#bank_details` itself is unchanged in one respect: it still quotes the
+*offered* account for the store's default currency (`Spree::Config[:currency]`),
+via `bank_details_for`, and still emits a one-time deprecation warning. Only
+its return type changed, to keep it truthful about what an account now is:
+a store can hold more than one detail set (local + international) per
+currency, and a `Hash` had no way to represent that.
+
+### Added
+
+**Multi-currency bank accounts.** A store can now configure one bank
+account per currency (`Spree::BankPayments::BankAccount`), instead of a
+single flat set of `account_*` preferences shared by every currency. See
+the README's "Bank accounts and currencies" section for the full model —
+briefly:
+
+- Customers are always shown every detail set on the offered account for
+  their order's currency (local and international both) — never inferred
+  from billing country.
+- The admin checklist allows at most one *offered* account per currency,
+  enforced by a partial unique database index — not just a form validation.
+- Every synced account is watched (polled/webhooked) regardless of whether
+  it is offered, so switching which account is offered for a currency never
+  strands a transfer already in flight against the old one.
+- A currency with no offered account is not presented at checkout for that
+  currency (`available_for_order?` returns `false`), unless the order
+  already holds an open same-currency session against this gateway.
+- Accounts can be synced from a provider (`Reconciler#sync_accounts`) or
+  entered by hand in the admin. Sync never sets `offered` and never rewrites
+  `bank_account_id` on an existing session — both are left to a human and to
+  history respectively.
+- A soft-deleted account is not silently resurrected by a later sync; it is
+  reported as skipped in the sync diff instead.
+
+**Legacy preference migration.** A data migration
+(`db/migrate/20260817000003_migrate_legacy_account_preferences.rb`) folds
+any existing `account_*` preferences into one `BankAccount`, marked
+`offered`, for the store's default currency. An upgrading install keeps
+quoting exactly what it quoted before — no manual step required.
+
+### Reconciler contract additions
+
+All additions are backward compatible with the contract published in 5.1.1.
+**A reconciler gem built against 5.1.1 keeps working unmodified against
+5.2.0** — nothing already implemented changed shape, and everything new is
+either optional to override or defaults to `[]`/`nil`.
+
+- **`sync_accounts` → `Array<Spree::BankPayments::AccountData>`.** New,
+  optional override point on `Reconcilers::Base`; the default and `Manual`
+  both return `[]`. `AccountData` carries `provider_account_id`, `currency`,
+  and `details` in the normalised detail-set shape (the same shape
+  `BankAccount#details` stores).
+- **`TransferData` gains `provider_account_id`**, defaulting to `nil`. The
+  initializer is keyword-only, so this is additive: existing construction
+  calls are unaffected.
+- **`poll(since:)` is unchanged.** Per-account fetching stays the
+  provider's business.
+- The exported shared example groups gain a third group,
+  `'a bank transfer reconciler that returns accounts'` — provider authors
+  must run it alongside the existing two (`'a bank transfer reconciler'` and
+  `'a bank transfer reconciler that returns transfers'`) if their reconciler
+  implements `sync_accounts`. It exists because the base group cannot check
+  element types against an empty result.
+
 ## 5.1.1
 
 ### Fixed

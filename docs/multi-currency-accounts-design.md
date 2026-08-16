@@ -1,9 +1,15 @@
 # Multi-currency bank accounts — design spec
 
 **Date:** 2026-08-16
-**Status:** Approved, ready for implementation planning
+**Status:** Implemented, shipped in 5.2.0
 **Target:** `spree-bank_payments` 5.2.0 (minor — new feature, backward-compatible
 contract additions)
+
+> **Note (2026-08-17):** the sections below are the spec as approved. A few
+> details changed during implementation; where they did, this document has
+> been updated in place and the change is called out inline rather than left
+> to silently drift from the code. See in particular "Data model" (soft
+> delete) and "Quoting and availability" (`available_for_order?`).
 
 ## Problem
 
@@ -62,22 +68,34 @@ is out of scope beyond the interface it must satisfy.
 | `offered` | Boolean. Quoted to customers |
 | `active` | Boolean. Soft disable; deactivated on provider disappearance |
 | `synced_at` | Nullable. Null for hand-created accounts |
+| `deleted_at` | **Added during implementation, not in the original spec.** `BankAccount` is `acts_as_paranoid`, following `Spree::PaymentMethod` and `Spree::PaymentSession`'s existing precedent: `Gateway#bank_accounts` has `dependent: :destroy`, and without soft delete a gateway being soft-deleted (or an admin deleting an account) would hard-delete rows that a session already quoted a customer against, or that a restored gateway should get back. |
 | timestamps | |
 
 **Indexes:**
 
 - Unique `(payment_method_id, provider_account_id)` — sync idempotency. Partial,
-  `WHERE provider_account_id IS NOT NULL`, so multiple hand-created accounts are
-  possible.
-- **Partial unique `(payment_method_id, currency) WHERE offered`** — at most one
-  offered account per currency, guaranteed by the database rather than a form
-  validation.
+  `WHERE provider_account_id IS NOT NULL AND deleted_at IS NULL`, so multiple
+  hand-created accounts are possible **and** a soft-deleted row does not block
+  a live replacement from taking the same provider id.
+- **Partial unique `(payment_method_id, currency) WHERE offered AND deleted_at
+  IS NULL`** — at most one *live* offered account per currency, guaranteed by
+  the database rather than a form validation. Both partial indexes exclude
+  soft-deleted rows (added in
+  `db/migrate/20260817000005_exclude_soft_deleted_from_bank_account_uniqueness.rb`):
+  without the `deleted_at IS NULL` clause, a soft-deleted row still satisfies
+  the old predicate and blocks a live row from taking its place — reachable
+  through the ordinary admin path (delete an offered account, then try to
+  create/offer its replacement) and hits `RecordNotUnique` against a row the
+  admin can no longer see.
 - `(payment_method_id, active)` for the polling scope.
 
-**Validations:** `currency` present and ISO-shaped; at least one active detail set;
-each detail set has at least one non-blank field. An account with no payable
-coordinates is worse than no account — the customer is quoted an empty instruction
-block.
+**Validations:** `currency` present and ISO-shaped (`/\A[A-Za-z]{3}\z/`, upcased
+before validation); at least one **usable** detail set — i.e. at least one
+detail set with a non-blank `fields` value (`DetailSet#usable?`). Corrected
+from the original wording, "at least one active detail set": there is no
+per-detail-set active flag, only `BankAccount#active`; the actual gate is
+usability. An account with no payable coordinates is worse than no account —
+the customer is quoted an empty instruction block.
 
 ### The `details` payload
 
@@ -150,6 +168,17 @@ account exists for the order's currency. Bank transfer simply is not presented,
 rather than being presented and failing at session creation or quoting nothing.
 Unchecking every GBP account withdraws the method for GBP orders — the safe
 direction, and visible in the admin checklist rather than surprising.
+
+**Added during implementation, not in the original spec:** `available_for_order?`
+also returns **true** when the order already holds an open payment session
+against this gateway in its current currency, even if no account is offered
+for that currency any more. Without this, un-offering the last account for a
+currency mid-checkout would make `Spree::Payment`'s
+`payment_method_available_for_order` check (which reuses this same predicate)
+refuse to let an already-quoted order pay by the method it was quoted on.
+Scoped strictly to the order's *current* currency, so a cart quoted in GBP and
+then switched to USD does not resurrect availability for a currency that never
+had an offered account.
 
 **The buyer always sees every active detail set**, labelled by scheme, in both the
 instructions email and the order screen. Local versus international is the buyer's
