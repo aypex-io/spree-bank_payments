@@ -53,4 +53,28 @@ RSpec.describe Spree::BankPayments::BankAccount do
 
     expect { other.save! }.not_to raise_error
   end
+
+  describe '.for_currency' do
+    it 'finds an uppercase-stored account from a lowercase lookup' do
+      account = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP')
+
+      expect(described_class.for_currency('gbp')).to include(account)
+    end
+
+    it 'does not match a different currency' do
+      create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP')
+
+      expect(described_class.for_currency('EUR')).to be_empty
+    end
+
+    # normalize_currency runs on validation, so a write path that skips it
+    # leaves a lowercase row behind. The scope must still be the thing that
+    # fails loudly rather than the storefront quoting nothing.
+    it 'does not silently match a row written without normalisation' do
+      account = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP')
+      account.update_column(:currency, 'gbp')
+
+      expect(described_class.for_currency('gbp')).to be_empty
+    end
+  end
 end
