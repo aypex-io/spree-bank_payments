@@ -5,7 +5,7 @@
     The reference, amount, and deadline are the functional core of this
     partial: auto-matching depends entirely on the customer quoting the
     reference correctly, so it must stay visually unmissable. %>
-<% bank_details = payment_session.payment_method.bank_details %>
+<% detail_sets = payment_session.payment_method.bank_details_for(payment_session.currency) %>
 
 <section class="bank-transfer-instructions">
   <div class="bank-transfer-instructions__highlight">
@@ -51,23 +51,28 @@
     </dl>
   </div>
 
-  <dl>
-    <dt><%= Spree.t('bank_payments.account_name') %></dt>
-    <dd><%= bank_details[:account_name] %></dd>
+  <% detail_sets.each do |set| %>
+    <div class="bank-transfer-instructions__account">
+      <% if set.label.present? %>
+        <h3><%= set.label %></h3>
+      <% end %>
 
-    <% if bank_details[:iban].present? %>
-      <dt><%= Spree.t('bank_payments.iban') %></dt><dd><%= bank_details[:iban] %></dd>
-    <% end %>
-    <% if bank_details[:bic].present? %>
-      <dt><%= Spree.t('bank_payments.bic') %></dt><dd><%= bank_details[:bic] %></dd>
-    <% end %>
-    <% if bank_details[:sort_code].present? %>
-      <dt><%= Spree.t('bank_payments.sort_code') %></dt><dd><%= bank_details[:sort_code] %></dd>
-    <% end %>
-    <% if bank_details[:account_number].present? %>
-      <dt><%= Spree.t('bank_payments.account_number') %></dt><dd><%= bank_details[:account_number] %></dd>
-    <% end %>
-  </dl>
+      <dl>
+        <% if set.beneficiary_name.present? %>
+          <dt><%= Spree.t('bank_payments.beneficiary') %></dt>
+          <dd><%= set.beneficiary_name %></dd>
+        <% end %>
+
+        <%# Label/value pairs, rendered generically: bank coordinates are not
+            standardised across countries, so the view must never assume which
+            fields exist. %>
+        <% set.fields.each do |label, value| %>
+          <dt><%= label %></dt>
+          <dd><%= value %></dd>
+        <% end %>
+      </dl>
+    </div>
+  <% end %>
 
   <p><%= Spree.t('bank_payments.dispatch_note') %></p>
 </section>

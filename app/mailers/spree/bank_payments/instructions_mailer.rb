@@ -4,7 +4,7 @@ module Spree
       def instructions(payment_session_id)
         @session = ::Spree::PaymentSessions::BankTransfer.find(payment_session_id)
         @order = @session.order
-        @bank_details = @session.payment_method.bank_details
+        @detail_sets = @session.payment_method.bank_details_for(@session.currency)
 
         with_store_locale(@order.store) do
           mail(to: @order.email, subject: Spree.t('bank_payments.reference'))
@@ -14,7 +14,7 @@ module Spree
       def reminder(payment_session_id)
         @session = ::Spree::PaymentSessions::BankTransfer.find(payment_session_id)
         @order = @session.order
-        @bank_details = @session.payment_method.bank_details
+        @detail_sets = @session.payment_method.bank_details_for(@session.currency)
         @days_remaining = ((@session.expires_at.to_date - Date.current).to_i)
 
         with_store_locale(@order.store) do

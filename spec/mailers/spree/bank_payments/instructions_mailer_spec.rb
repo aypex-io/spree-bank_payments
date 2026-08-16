@@ -2,6 +2,9 @@ require 'spec_helper'
 
 RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
   let(:payment_method) { create(:bank_transfer_gateway) }
+  let!(:bank_account) do
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+  end
   let(:order) { create(:completed_order_with_totals) }
   let(:session) do
     create(:bank_transfer_payment_session, order: order, payment_method: payment_method)
@@ -22,9 +25,11 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
       expect(mail.body.encoded).to include(session.reference)
     end
 
-    it 'includes the bank account details in the body' do
-      expect(mail.body.encoded).to include(payment_method.preferred_account_name)
-      expect(mail.body.encoded).to include(payment_method.preferred_account_iban)
+    it 'includes every detail set, labelled, in the body' do
+      expect(mail.body.encoded).to include('UK payments')
+      expect(mail.body.encoded).to include('International')
+      expect(mail.body.encoded).to include('04-00-75')
+      expect(mail.body.encoded).to include('GB00REVO00000000000000')
     end
   end
 

@@ -2,7 +2,7 @@ require 'spec_helper'
 
 RSpec.describe 'spree/bank_payments/_order_instructions', type: :view do
   let(:payment_method) { create(:bank_transfer_gateway) }
-  let(:order) { create(:completed_order_with_totals) }
+  let(:order) { create(:completed_order_with_totals, currency: 'GBP') }
   let(:payment_session) { payment_method.create_payment_session(order: order) }
 
   it 'shows the reference prominently' do
@@ -38,10 +38,41 @@ RSpec.describe 'spree/bank_payments/_order_instructions', type: :view do
     end
   end
 
-  it 'shows the bank details' do
+  it 'shows the bank details for an offered account matching the session currency' do
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+
     render partial: 'spree/bank_payments/order_instructions',
            locals: { payment_session: payment_session }
 
-    expect(rendered).to include('GB00TEST00000000000000')
+    expect(rendered).to include('GB00REVO00000000000000')
+  end
+
+  it 'renders every detail set, labelled' do
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+
+    render partial: 'spree/bank_payments/order_instructions',
+           locals: { payment_session: payment_session }
+
+    expect(rendered).to include('UK payments')
+    expect(rendered).to include('International')
+    expect(rendered).to include('04-00-75')
+    expect(rendered).to include('GB00REVO00000000000000')
+  end
+
+  # This is the proof that the jsonb label/value design actually works: bank
+  # coordinates are not standardised across countries, so a market this view
+  # has never heard of must render correctly with no migration or view
+  # change. If this passed only because the view happens to iterate a hash
+  # the same way, that would defeat the point -- it must pass because the
+  # partial renders DetailSet#fields generically.
+  it 'renders coordinate labels the view has never seen' do
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true,
+           details: [{ 'label' => 'Local', 'fields' => [{ 'label' => 'Elixir number', 'value' => '99887766' }] }])
+
+    render partial: 'spree/bank_payments/order_instructions',
+           locals: { payment_session: payment_session }
+
+    expect(rendered).to include('Elixir number')
+    expect(rendered).to include('99887766')
   end
 end

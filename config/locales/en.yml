@@ -12,6 +12,7 @@ en:
       copied: "Copied!"
       transfer_by: "Transfer by"
       account_name: "Account name"
+      beneficiary: "Beneficiary"
       iban: "IBAN"
       bic: "BIC"
       sort_code: "Sort code"

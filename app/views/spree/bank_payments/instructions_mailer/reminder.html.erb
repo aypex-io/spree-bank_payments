@@ -9,12 +9,21 @@
   <%= @session.money.to_s %>
 </p>
 
-<ul>
-  <li><%= @bank_details[:account_name] %></li>
-  <% if @bank_details[:iban].present? %><li>IBAN: <%= @bank_details[:iban] %></li><% end %>
-  <% if @bank_details[:bic].present? %><li>BIC: <%= @bank_details[:bic] %></li><% end %>
-  <% if @bank_details[:sort_code].present? %><li>Sort code: <%= @bank_details[:sort_code] %></li><% end %>
-  <% if @bank_details[:account_number].present? %><li>Account number: <%= @bank_details[:account_number] %></li><% end %>
-</ul>
+<% @detail_sets.each do |set| %>
+  <% if set.label.present? %><h3><%= set.label %></h3><% end %>
+
+  <ul>
+    <% if set.beneficiary_name.present? %>
+      <li><%= Spree.t('bank_payments.beneficiary') %>: <%= set.beneficiary_name %></li>
+    <% end %>
+
+    <%# Label/value pairs, rendered generically: bank coordinates are not
+        standardised across countries, so the view must never assume which
+        fields exist. %>
+    <% set.fields.each do |label, value| %>
+      <li><%= label %>: <%= value %></li>
+    <% end %>
+  </ul>
+<% end %>
 
 <p><%= Spree.t('bank_payments.dispatch_note') %></p>
