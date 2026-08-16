@@ -7,6 +7,9 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
   # This spec is about matching/application, not discount amount, so the
   # discount is switched off here rather than reworking the pinned totals.
   let(:payment_method) { create(:bank_transfer_gateway, preferred_discount_percent: 0) }
+  let!(:bank_account) do
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+  end
   # A bank-transfer order is checkout-complete before the customer ever
   # sees the transfer instructions (they render on the confirmation page),
   # so :completed_order_with_totals is the representative fixture, not

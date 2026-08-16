@@ -7,6 +7,9 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
   # apply_transfer_spec.rb -- otherwise order.total never lands on the
   # pinned amount and payment_state can't reach 'paid'.
   let(:payment_method) { create(:bank_transfer_gateway, preferred_discount_percent: 0) }
+  let!(:bank_account) do
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+  end
   let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
   let(:session_record) do
     create(:bank_transfer_payment_session,

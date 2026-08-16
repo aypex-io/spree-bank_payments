@@ -2,6 +2,9 @@ require 'spec_helper'
 
 RSpec.describe Spree::BankPayments::Gateway, '#parse_webhook_event' do
   let(:payment_method) { create(:bank_transfer_gateway) }
+  let!(:bank_account) do
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+  end
   let(:order) { create(:order_with_line_items, currency: 'GBP') }
   let!(:session) do
     create(:bank_transfer_payment_session,

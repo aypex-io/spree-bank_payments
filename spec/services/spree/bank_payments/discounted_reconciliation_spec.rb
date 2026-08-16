@@ -10,6 +10,7 @@ require 'spec_helper'
 RSpec.describe 'reconciling a discounted bank-transfer order end-to-end' do
   it 'auto-applies a transfer for the discounted amount and reaches paid' do
     payment_method = create(:bank_transfer_gateway) # 3% in the factory
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
     order = create(:completed_order_with_totals, currency: 'GBP', line_items_price: 100.00, shipment_cost: 0)
 
     session = payment_method.create_payment_session(order: order)

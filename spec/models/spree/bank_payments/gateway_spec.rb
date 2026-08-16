@@ -21,8 +21,19 @@ RSpec.describe Spree::BankPayments::Gateway do
     expect { gateway.reconciler_state }.to change(Spree::BankPayments::ReconcilerState, :count).by(1)
   end
 
-  it 'exposes bank details for display' do
-    expect(gateway.bank_details).to include(account_name: 'Example Store Ltd', iban: 'GB00TEST00000000000000')
+  it 'exposes the offered account details for the store currency via the deprecated shim' do
+    create(:bank_payments_bank_account, payment_method: gateway, currency: Spree::Config[:currency], offered: true)
+
+    detail_sets = gateway.bank_details
+
+    expect(detail_sets.map(&:label)).to eq(['UK payments', 'International'])
+    expect(detail_sets.first.beneficiary_name).to eq('Example Store Ltd')
+    expect(detail_sets.first.fields).to eq(
+      [['Sort code', '04-00-75'], ['Account number', '12345678']]
+    )
+    expect(detail_sets.last.fields).to eq(
+      [['IBAN', 'GB00REVO00000000000000'], ['BIC', 'REVOGB21']]
+    )
   end
 
   # Spree::PaymentMethod#method_type defaults to `type.demodulize.downcase`
@@ -59,6 +70,8 @@ RSpec.describe Spree::BankPayments::Gateway do
     end
 
     it 'does not move the goalposts once a payment is later created (reconciliation-time hook is a no-op)' do
+      create(:bank_payments_bank_account, payment_method: gateway, currency: order.currency, offered: true)
+
       session = gateway.create_payment_session(order: order)
       quoted_amount = session.amount
 

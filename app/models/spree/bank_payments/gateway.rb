@@ -16,6 +16,11 @@ module Spree
       validate :discount_percent_within_bounds
       validate :expiry_days_positive
 
+      has_many :bank_accounts,
+               class_name: 'Spree::BankPayments::BankAccount',
+               foreign_key: :payment_method_id,
+               dependent: :destroy
+
       def payment_source_class
         nil
       end
@@ -127,14 +132,43 @@ module Spree
         }
       end
 
+      # The account customers are quoted for this currency. Only one can be
+      # offered per currency -- guaranteed by a partial unique index.
+      def offered_account_for(currency)
+        bank_accounts.active.offered.for_currency(currency).first
+      end
+
+      # @return [Array<Spree::BankPayments::DetailSet>] every usable detail set,
+      #   in order. The buyer is always shown all of them: they know where they
+      #   bank, and inferring local-vs-international from billing country would
+      #   need a maintained SEPA membership list and would hide the details the
+      #   customer actually needed when it guessed wrong.
+      def bank_details_for(currency)
+        account = offered_account_for(currency)
+        return [] if account.nil?
+
+        account.detail_sets.select(&:usable?)
+      end
+
+      def available_for_order?(order)
+        return false unless super
+
+        offered_account_for(order.currency).present?
+      end
+
+      # @deprecated Use #bank_details_for(currency).
       def bank_details
-        {
-          account_name: preferred_account_name,
-          iban: preferred_account_iban,
-          bic: preferred_account_bic,
-          sort_code: preferred_account_sort_code,
-          account_number: preferred_account_number
-        }
+        message =
+          'Spree::BankPayments::Gateway#bank_details is deprecated; ' \
+          'use #bank_details_for(currency).'
+
+        if defined?(Spree::Deprecation)
+          Spree::Deprecation.warn(message)
+        else
+          Rails.logger.warn(message)
+        end
+
+        bank_details_for(Spree::Config[:currency])
       end
 
       # Strip a trailing .0 on whole numbers (3 -> "3") but keep fractional

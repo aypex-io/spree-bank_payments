@@ -126,6 +126,7 @@ RSpec.describe Spree::BankPayments::ApplyDiscount do
     # Spree::OrderUpdater#update), so :order_with_line_items (still in
     # checkout) can never reach 'paid'.
     discounted_order = create(:completed_order_with_totals, currency: 'GBP', line_items_price: 100.00, shipment_cost: 0)
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
 
     create(:payment, order: discounted_order, payment_method: payment_method, amount: 97.00, state: 'completed')
     discounted_order.reload
