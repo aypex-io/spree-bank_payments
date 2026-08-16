@@ -16,7 +16,6 @@ module AypexBankTransfer
     private
 
     def poll_one(payment_method)
-      state = nil
       state = payment_method.reconciler_state
       since = (state.last_successful_run_at || 7.days.ago) - OVERLAP
 
