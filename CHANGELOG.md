@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- The admin order panel badged a **superseded** bank-transfer session as
+  "Expired". A session is superseded (canceled) when the order was settled by
+  another payment method, and its `expires_at` is usually already in the past —
+  so testing the time-based `expired?` predicate first labelled a card-paid
+  order as expired. The badge now branches on session **status**, and shows
+  "Superseded" for that case.
+
+  The same change fixes a second misreport: a *pending* session past its expiry
+  that the sweeper has not reached yet is still matched by `.open`, so a
+  transfer can still be auto-applied to it. It now correctly reads "Awaiting
+  transfer" rather than "Expired".
+
+### Documentation
+
+- The manual "record a received transfer" form derives a transfer's identity
+  from the values entered, which makes resubmission safe but also means two
+  genuinely separate transfers matching on every recorded field are treated as
+  one. The README said only the first half; it now says both, with guidance for
+  recording a real duplicate payment.
+
 ## 5.1.0
 
 **The bank-transfer discount is now tax-aware.**

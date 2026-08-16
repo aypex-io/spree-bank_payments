@@ -58,6 +58,14 @@ at `/admin/bank_transfers`. That screen is the operational heart of the gem:
   from what you typed, so a resubmission is recognised as the same transfer
   and nothing is credited twice.
 
+  The same derivation has a flip side. Two genuinely separate transfers that
+  match on every recorded field — payment method, amount, currency, reference,
+  payer name and date received — are treated as one, and only the first is
+  credited. If a customer really did send the same amount twice on the same day,
+  record the second with something that distinguishes it (the payer name exactly
+  as it appears on that transfer, for instance) so it is not collapsed into the
+  first.
+
 - **Applying to a mismatched order** takes two deliberate steps. The first
   click is refused with both amounts spelled out; only then does an explicit
   "Yes — apply … anyway" control appear for that specific pairing, behind a

@@ -13,9 +13,18 @@
 
       <dt class="col-4">Status</dt>
       <dd class="col-8">
-        <% if session.completed? %>
+        <%# Branch on status, never on the time-based `expired?` predicate. A
+            session is superseded (canceled) when the order was settled by another
+            method, and its expires_at is usually in the past -- reading the clock
+            first would badge a card-paid order as "Expired". Equally, a pending
+            session past expires_at that the sweeper has not reached yet is still
+            matchable by `.open`, so it is still awaiting a transfer, not expired. %>
+        <% case session.status %>
+        <% when 'completed' %>
           <span class="badge bg-success">Paid</span>
-        <% elsif session.expired? || session.status == 'expired' %>
+        <% when 'canceled' %>
+          <span class="badge bg-secondary">Superseded</span>
+        <% when 'expired' %>
           <span class="badge bg-secondary">Expired</span>
         <% else %>
           <span class="badge bg-warning text-dark">Awaiting transfer</span>
