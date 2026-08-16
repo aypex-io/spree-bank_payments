@@ -77,6 +77,15 @@ module AypexBankTransfer
       @reconciler ||= Reconcilers::Base.build(payment_method: self)
     end
 
+    # Gate on both the reconciler's own opinion and our recorded poll history.
+    # The Manual reconciler is always healthy because it never polls.
+    def reconciler_healthy?
+      return false unless reconciler.healthy?
+      return true if reconciler.is_a?(Reconcilers::Manual)
+
+      reconciler_state.healthy?(preferred_poll_interval_minutes)
+    end
+
     def bank_details
       {
         account_name: preferred_account_name,
