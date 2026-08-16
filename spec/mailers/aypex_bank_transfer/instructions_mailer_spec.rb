@@ -31,12 +31,18 @@ RSpec.describe AypexBankTransfer::InstructionsMailer, type: :mailer do
   describe '#reminder' do
     subject(:mail) { described_class.reminder(session.id) }
 
+    let(:days_remaining) { (session.expires_at.to_date - Date.current).to_i }
+
     it 'sends to the order email' do
       expect(mail.to).to eq([order.email])
     end
 
-    it 'renders the pay-within subject' do
-      expect(mail.subject).to eq(Spree.t('bank_transfer.pay_within', days: 2))
+    it 'renders a pay-within subject that matches the days remaining on the session' do
+      expect(mail.subject).to eq(Spree.t('bank_transfer.pay_within', days: days_remaining))
+    end
+
+    it 'states the same days-remaining figure in the subject and the body, so they cannot drift' do
+      expect(mail.body.encoded).to include(Spree.t('bank_transfer.pay_within', days: days_remaining))
     end
 
     it 'includes the payment reference in the body' do

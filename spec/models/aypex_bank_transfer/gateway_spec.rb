@@ -46,5 +46,21 @@ RSpec.describe AypexBankTransfer::Gateway do
 
       expect(order.reload.total).to eq(quoted_amount)
     end
+
+    it 'publishes bank_transfer.instructions_ready for the persisted session, after creation' do
+      published_payload = nil
+      allow(Spree::Events).to receive(:publish) do |name, payload|
+        published_payload = payload if name == 'bank_transfer.instructions_ready'
+      end
+
+      session = gateway.create_payment_session(order: order)
+
+      # Proves the event fires after Spree::PaymentSessions::BankTransfer.create!
+      # (not before, and not against some other record): the payload's id must
+      # match the id of the session actually returned/persisted.
+      expect(session.id).to be_present
+      expect(published_payload).not_to be_nil
+      expect(published_payload[:payment_session_id]).to eq(session.id)
+    end
   end
 end

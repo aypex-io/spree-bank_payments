@@ -1,4 +1,4 @@
-<p><%= Spree.t('bank_transfer.pay_within', days: ((@session.expires_at.to_date - Date.current).to_i)) %></p>
+<p><%= Spree.t('bank_transfer.pay_within', days: @days_remaining) %></p>
 
 <h1><%= Spree.t('bank_transfer.reference') %>: <%= @session.reference %></h1>
 
