@@ -14,6 +14,9 @@ module Spree
       # queue from applying a transfer received on one bank-transfer gateway
       # to a session belonging to a different one.
       belongs_to :payment_method, class_name: 'Spree::PaymentMethod', optional: true
+      belongs_to :bank_account,
+                 class_name: 'Spree::BankPayments::BankAccount',
+                 optional: true
 
       validates :provider, :provider_transaction_id, :amount, :currency, :occurred_at, presence: true
       validates :provider_transaction_id, uniqueness: { scope: :provider }

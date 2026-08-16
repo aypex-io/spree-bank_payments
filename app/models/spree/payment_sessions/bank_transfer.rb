@@ -1,6 +1,10 @@
 module Spree
   module PaymentSessions
     class BankTransfer < Spree::PaymentSession
+      belongs_to :bank_account,
+                 class_name: 'Spree::BankPayments::BankAccount',
+                 optional: true
+
       before_validation :normalize_external_id
 
       # Deliberately matches on status alone, not `not_expired`/`active`.

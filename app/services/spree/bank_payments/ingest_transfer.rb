@@ -33,11 +33,22 @@ module Spree
           occurred_at: data.occurred_at,
           raw_payload: data.raw || {},
           state: 'unmatched',
-          payment_method_id: payment_method.id
+          payment_method_id: payment_method.id,
+          bank_account_id: arriving_bank_account&.id
         ).find_or_create_by!(
           provider: data.provider,
           provider_transaction_id: data.provider_transaction_id
         )
+      end
+
+      # Watched, not offered: a transfer into an account the merchant has since
+      # stopped offering must still reconcile, or switching accounts would
+      # strand orders already in flight.
+      def arriving_bank_account
+        return nil if data.provider_account_id.blank?
+
+        @arriving_bank_account ||= payment_method.bank_accounts.active.
+          find_by(provider_account_id: data.provider_account_id)
       end
 
       # Auto-apply demands certainty: exact reference, exact amount, exact
@@ -55,6 +66,13 @@ module Spree
         session = candidates.first
         return nil unless session.amount == transfer.amount
         return nil unless session.currency == transfer.currency
+
+        # Advisory: only compare when both sides recorded an account. A legacy
+        # session, or the Manual reconciler, has none and matches as before.
+        if session.bank_account_id.present? && transfer.bank_account_id.present? &&
+           session.bank_account_id != transfer.bank_account_id
+          return nil
+        end
 
         # C2: the customer may have abandoned the transfer, paid by card, and
         # then sent the bank transfer anyway from the emailed instructions --

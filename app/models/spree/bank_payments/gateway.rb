@@ -43,6 +43,8 @@ module Spree
         # becomes a harmless no-op rather than a second discount.
         ApplyDiscount.call(order: order, payment_method: self)
 
+        account = offered_account_for(order.currency)
+
         session = ::Spree::PaymentSessions::BankTransfer.create!(
           order: order,
           payment_method: self,
@@ -50,7 +52,8 @@ module Spree
           currency: order.currency,
           external_id: ReferenceGenerator.new(payment_method: self).generate,
           external_data: external_data,
-          expires_at: preferred_expiry_days.to_i.days.from_now
+          expires_at: preferred_expiry_days.to_i.days.from_now,
+          bank_account_id: account&.id
         )
 
         Spree::Events.publish('bank_transfer.instructions_ready', session.notification_payload)
@@ -153,7 +156,17 @@ module Spree
       def available_for_order?(order)
         return false unless super
 
-        offered_account_for(order.currency).present?
+        return true if offered_account_for(order.currency).present?
+
+        # An order that already quoted this gateway must be able to settle
+        # even if the merchant has since stopped offering every account in
+        # its currency. Spree::Payment reuses this same predicate to gate
+        # payment creation (`payment_method_available_for_order`), and a
+        # transfer can arrive days after the quote -- long enough for an
+        # admin to switch or retire accounts in between. Checkout listing is
+        # unaffected: a brand-new order has no session yet, so this branch
+        # never widens which methods a fresh checkout can select.
+        order.payment_sessions.exists?(payment_method_id: id, type: payment_session_class.name)
       end
 
       # @deprecated Use #bank_details_for(currency).
