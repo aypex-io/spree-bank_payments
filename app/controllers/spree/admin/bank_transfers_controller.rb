@@ -103,12 +103,16 @@ module Spree
 
       # A human is allowed to hand-match a transfer to a session for a
       # different amount/currency (typos happen, partial payments happen)
-      # but never silently: find_or_create_payment! stamps the *session's*
-      # amount onto the payment, so an unconfirmed mismatch would credit
-      # the order for whatever the session asked for, not what actually
-      # arrived.
+      # but never silently -- ApplyTransfer now credits the payment with
+      # the transfer's own amount, so a confirmed mismatch produces a real
+      # balance_due/credit_owed rather than a false 'paid', but the admin
+      # still has to see and confirm the mismatch before it happens.
+      # Currency codes are compared case-insensitively so 'gbp' vs 'GBP'
+      # (same currency, different casing) doesn't force a spurious
+      # confirmation on an otherwise exact match.
       def money_mismatch?(payment_session)
-        @transfer.amount != payment_session.amount || @transfer.currency != payment_session.currency
+        @transfer.amount != payment_session.amount ||
+          @transfer.currency.to_s.casecmp(payment_session.currency.to_s) != 0
       end
 
       def confirmed_mismatch?

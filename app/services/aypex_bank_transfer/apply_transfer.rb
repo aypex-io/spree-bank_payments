@@ -24,6 +24,33 @@ module AypexBankTransfer
         # payment.complete! raises, the DB rolls back but that event
         # cannot be recalled.
         payment = payment_session.find_or_create_payment!
+
+        # find_or_create_payment! (Spree core) stamps the *session's*
+        # amount onto the payment -- correct on the automatic path, where
+        # IngestTransfer only ever gets here on an exact amount/currency
+        # match, so this is a no-op there. On the manual admin path (Task
+        # 13) an admin can confirm applying a transfer to a session whose
+        # amount doesn't match what actually arrived; crediting the
+        # session's amount in that case would mark the order 'paid' for
+        # money it never received. Re-stamp the payment with what the
+        # transfer says actually arrived before completing it, so Spree's
+        # own payment_state computation reflects the real balance
+        # (balance_due/credit_owed) instead of a false 'paid'.
+        #
+        # Only mutate while the payment is still editable (pre-completion):
+        # Payment#editable? is checkout/pending, and completing flips
+        # payment_total via the state machine, so touching amount after
+        # completion would need a second recalculation this class doesn't
+        # own. `find_or_create_payment!` always returns either a payment it
+        # just created (checkout state) or one it found by the same
+        # response_code -- if that existing payment is already completed
+        # (shouldn't happen: the `applied?` guard upstream prevents
+        # re-applying), leave its amount alone rather than mutate a
+        # finalized record.
+        if !payment.completed? && payment.amount != transfer.amount
+          payment.update!(amount: transfer.amount)
+        end
+
         payment.complete! unless payment.completed?
         payment_session.complete! unless payment_session.completed?
 

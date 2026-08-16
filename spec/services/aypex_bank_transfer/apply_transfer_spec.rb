@@ -34,6 +34,36 @@ RSpec.describe AypexBankTransfer::ApplyTransfer do
     expect(order.reload.payment_state).to eq('paid')
     expect(transfer.reload).to be_applied
     expect(transfer.payment_session).to eq(session)
+    # Auto path: transfer.amount == session.amount by construction (exact
+    # match is a precondition of auto-apply), so the payment is credited
+    # for the full session amount either way -- this pins that down
+    # explicitly so a future change to the amount-crediting logic below
+    # can't silently regress the automatic path.
+    expect(order.payments.last.amount).to eq(25.00)
+  end
+
+  describe 'crediting the payment (Fix 6)' do
+    # A larger, distinct order total so a 25.00 payment against it leaves a
+    # real, non-zero balance -- proving payment_state reflects what the
+    # payment actually recorded, not just "did it move at all".
+    let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 250.00, shipment_cost: 0) }
+    let(:session) do
+      create(:bank_transfer_payment_session,
+             order: order, payment_method: payment_method,
+             external_id: 'TKF-7Q4X2', amount: 250.00, currency: 'GBP')
+    end
+
+    it "credits the payment with the transfer's amount, not the session's, when they differ" do
+      admin = create(:admin_user)
+
+      apply(applied_by: admin)
+
+      payment = order.payments.last
+      expect(payment.amount).to eq(25.00)
+      expect(payment).to be_completed
+      # 25.00 paid against a 250.00 order is a real shortfall, not 'paid'.
+      expect(order.reload.payment_state).to eq('balance_due')
+    end
   end
 
   describe 'applied_by tracking' do

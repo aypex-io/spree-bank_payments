@@ -122,8 +122,10 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
                order: order, payment_method: payment_method, amount: 20.00, currency: 'GBP')
       end
 
-      it 'refuses to apply without explicit confirmation' do
-        put :apply, params: { id: transfer.id, payment_session_id: mismatched_session.id }
+      it 'refuses to apply without explicit confirmation, and creates no payment' do
+        expect {
+          put :apply, params: { id: transfer.id, payment_session_id: mismatched_session.id }
+        }.not_to change(Spree::Payment, :count)
 
         transfer.reload
         expect(transfer).not_to be_applied
@@ -139,6 +141,41 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
         transfer.reload
         expect(transfer).to be_applied
         expect(transfer.payment_session).to eq(mismatched_session)
+      end
+
+      it 'does not force confirmation when only currency casing differs (Fix 7)' do
+        same_currency_session = create(:bank_transfer_payment_session,
+                                        order: order, payment_method: payment_method,
+                                        amount: 25.00, currency: 'gbp')
+
+        put :apply, params: { id: transfer.id, payment_session_id: same_currency_session.id }
+
+        transfer.reload
+        expect(transfer).to be_applied
+        expect(flash[:error]).to be_nil
+      end
+    end
+
+    context 'crediting a confirmed mismatch (Fix 6)' do
+      # A distinct, larger order/session so a 25.00 payment leaves a real,
+      # non-zero balance -- proving payment_state reflects what was
+      # actually credited, not the session's (mismatched) expectation.
+      let(:big_order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 250.00, shipment_cost: 0) }
+      let(:big_session) do
+        create(:bank_transfer_payment_session,
+               order: big_order, payment_method: payment_method, amount: 250.00, currency: 'GBP')
+      end
+
+      it 'credits the payment for the transfer amount (25), not the session amount (250), and leaves the order unpaid' do
+        put :apply, params: {
+          id: transfer.id, payment_session_id: big_session.id, confirm_mismatch: '1'
+        }
+
+        transfer.reload
+        expect(transfer).to be_applied
+        big_order.reload
+        expect(big_order.payments.last.amount).to eq(25.00)
+        expect(big_order.payment_state).not_to eq('paid')
       end
     end
   end
