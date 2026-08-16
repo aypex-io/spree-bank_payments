@@ -1,0 +1,10 @@
+en:
+  spree:
+    bank_transfer:
+      discount_label: "Bank Transfer discount (%{percent}%)"
+      payment_method_label: "Bank Transfer — save %{percent}%"
+      pay_within: "Please transfer within %{days} days"
+      dispatch_note: "Your order is dispatched once funds clear."
+      reference: "Payment reference"
+      reference_help: "Please quote this reference exactly, or we may not be able to match your payment."
+      amount_to_transfer: "Amount to transfer"
