@@ -25,6 +25,26 @@ RSpec.describe AypexBankTransfer::Gateway do
     expect(gateway.bank_details).to include(account_name: 'Aypex Ltd', iban: 'GB00TEST00000000000000')
   end
 
+  # Spree::PaymentMethod#method_type defaults to `type.demodulize.downcase`
+  # ("gateway" for any Gateway subclass), and spree_storefront renders
+  # "spree/checkout/payment/#{method_type}" during checkout -- NOT
+  # description_partial_name or configuration_guide_partial_name, which are
+  # separate lookups used only by the admin payment-method screens. Without
+  # this override the checkout partial is unreachable in a real store even
+  # though a view spec rendering it by explicit path stays green, so this
+  # asserts the actual linkage: the value method_type returns really is the
+  # directory our partial lives in.
+  it 'overrides method_type so spree_storefront finds the checkout partial' do
+    expect(gateway.method_type).to eq('aypex_bank_transfer')
+
+    partial_path = AypexBankTransfer::Engine.root.join(
+      'app', 'views', 'spree', 'checkout', 'payment',
+      "_#{gateway.method_type}.html.erb"
+    )
+
+    expect(File.exist?(partial_path)).to be(true)
+  end
+
   describe '#create_payment_session' do
     # item_total 100, discount 3% (factory default) -> discounted total 97.00.
     # order_with_line_items has no item_total transient (see

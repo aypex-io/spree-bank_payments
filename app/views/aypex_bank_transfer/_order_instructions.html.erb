@@ -11,9 +11,33 @@
   <div class="bank-transfer-instructions__highlight">
     <h2><%= Spree.t('bank_transfer.reference') %></h2>
 
-    <p class="bank-transfer-reference" data-controller="clipboard">
-      <code class="bank-transfer-reference__code" data-clipboard-target="source"><%= payment_session.reference %></code>
-      <button type="button" data-action="clipboard#copy">Copy</button>
+    <%# The reference is a plain text node inside <code> either way, so it
+        stays selectable/copyable by hand if JS is unavailable -- the button
+        is a convenience on top, not the only way to copy it. Inline
+        onclick, no Stimulus/importmap/build step: this gem ships no
+        app/javascript, and a data-controller with no matching controller
+        class is silently inert in a host app. %>
+    <p class="bank-transfer-reference">
+      <code class="bank-transfer-reference__code"><%= payment_session.reference %></code>
+      <button
+        type="button"
+        class="bank-transfer-reference__copy"
+        data-copy-label="<%= Spree.t('bank_transfer.copy') %>"
+        data-copy-done-label="<%= Spree.t('bank_transfer.copied') %>"
+        onclick="
+          var btn = this;
+          var text = btn.previousElementSibling.textContent;
+          var done = btn.getAttribute('data-copy-done-label');
+          var reset = btn.getAttribute('data-copy-label');
+          var restore = function () { btn.textContent = reset; };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+              btn.textContent = done;
+              setTimeout(restore, 2000);
+            });
+          }
+        "
+      ><%= Spree.t('bank_transfer.copy') %></button>
     </p>
 
     <p class="bank-transfer-reference-help"><%= Spree.t('bank_transfer.reference_help') %></p>
@@ -22,26 +46,26 @@
       <dt><%= Spree.t('bank_transfer.amount_to_transfer') %></dt>
       <dd class="bank-transfer-amount__value"><%= payment_session.money.to_s %></dd>
 
-      <dt>Transfer by</dt>
+      <dt><%= Spree.t('bank_transfer.transfer_by') %></dt>
       <dd><%= l(payment_session.expires_at.to_date, format: :long) if payment_session.expires_at %></dd>
     </dl>
   </div>
 
   <dl>
-    <dt>Account name</dt>
+    <dt><%= Spree.t('bank_transfer.account_name') %></dt>
     <dd><%= bank_details[:account_name] %></dd>
 
     <% if bank_details[:iban].present? %>
-      <dt>IBAN</dt><dd><%= bank_details[:iban] %></dd>
+      <dt><%= Spree.t('bank_transfer.iban') %></dt><dd><%= bank_details[:iban] %></dd>
     <% end %>
     <% if bank_details[:bic].present? %>
-      <dt>BIC</dt><dd><%= bank_details[:bic] %></dd>
+      <dt><%= Spree.t('bank_transfer.bic') %></dt><dd><%= bank_details[:bic] %></dd>
     <% end %>
     <% if bank_details[:sort_code].present? %>
-      <dt>Sort code</dt><dd><%= bank_details[:sort_code] %></dd>
+      <dt><%= Spree.t('bank_transfer.sort_code') %></dt><dd><%= bank_details[:sort_code] %></dd>
     <% end %>
     <% if bank_details[:account_number].present? %>
-      <dt>Account number</dt><dd><%= bank_details[:account_number] %></dd>
+      <dt><%= Spree.t('bank_transfer.account_number') %></dt><dd><%= bank_details[:account_number] %></dd>
     <% end %>
   </dl>
 

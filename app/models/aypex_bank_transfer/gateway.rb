@@ -74,6 +74,15 @@ module AypexBankTransfer
       ::Spree::PaymentResponse.new(true, '', {}, {})
     end
 
+    # Spree::PaymentMethod#method_type defaults to `type.demodulize.downcase`
+    # ("gateway" for this class), which is what spree_storefront uses to look
+    # up "spree/checkout/payment/#{method_type}" -- without this override the
+    # checkout partial is never found in a real store, even though it renders
+    # fine when a spec renders it by explicit path.
+    def method_type
+      'aypex_bank_transfer'
+    end
+
     def description_partial_name
       'aypex_bank_transfer'
     end
