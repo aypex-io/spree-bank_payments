@@ -1,7 +1,12 @@
 require 'spec_helper'
 
 RSpec.describe AypexBankTransfer::IngestTransfer do
-  let(:payment_method) { create(:bank_transfer_gateway) }
+  # discount_percent: 0 -- the factory default is 3%, which (as of Task 9)
+  # is genuinely applied on payment creation and would shift order.total
+  # below the pinned 25.00 amount, making payment_state unreachably 'paid'.
+  # This spec is about matching/application, not discount amount, so the
+  # discount is switched off here rather than reworking the pinned totals.
+  let(:payment_method) { create(:bank_transfer_gateway, preferred_discount_percent: 0) }
   # A bank-transfer order is checkout-complete before the customer ever
   # sees the transfer instructions (they render on the confirmation page),
   # so :completed_order_with_totals is the representative fixture, not
