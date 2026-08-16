@@ -10,23 +10,6 @@ RSpec.describe 'AypexBankTransfer default mailer event subscription', type: :mai
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:order) { create(:order_with_line_items, line_items_price: 100.00, shipment_cost: 0) }
 
-  # Defensive, not decorative: spree_core's Engine runs `Spree::Events.reset!`
-  # + `Spree::Events.activate!` from `to_prepare` on every code reload, and
-  # `activate!` only re-registers class-based `Spree.subscribers` — it drops
-  # our Proc-based subscriptions (see lib/aypex_bank_transfer/subscribers.rb).
-  # In a full-suite run, an earlier spec file can trigger a reload between
-  # boot (when config/initializers/spree.rb subscribed once) and this
-  # example, silently emptying the registry — a false negative unrelated to
-  # whether create_payment_session actually publishes. Re-registering here
-  # only when the registry is already empty keeps this spec honest about
-  # what it's proving (the subscriber reacts to a real publish) without
-  # papering over or fixing that reload gap, which is tracked separately.
-  before do
-    if Spree::Events.registry.subscriptions_for('bank_transfer.instructions_ready').empty?
-      AypexBankTransfer.register_default_mailer_subscribers!
-    end
-  end
-
   it 'enqueues the instructions mail when bank_transfer.instructions_ready is published and the default mailer is enabled' do
     expect(AypexBankTransfer::Config.disable_default_mailer).to be(false)
 
@@ -43,22 +26,76 @@ RSpec.describe 'AypexBankTransfer default mailer event subscription', type: :mai
     end.to have_enqueued_mail(AypexBankTransfer::InstructionsMailer, :reminder)
   end
 
-  # NOT COVERED, and deliberately so rather than faking it green:
-  #
-  # config/initializers/spree.rb reads AypexBankTransfer::Config.disable_default_mailer
-  # exactly once, inside Rails.application.config.after_initialize, which runs
-  # once at process boot — before any example in this suite exists. Whether
-  # the two Spree::Events.subscribe calls above happened at all was decided
-  # then, permanently, for this process. Flipping
-  # AypexBankTransfer::Config.disable_default_mailer = true inside a spec here
-  # cannot retroactively unregister those subscriptions (Spree::Events has no
-  # "unsubscribe everything for this pattern and re-decide" hook we can drive
-  # from a preference read), so a spec that toggles the flag and then asserts
-  # "no mail enqueued" would be testing nothing but its own setup — it would
-  # pass regardless of whether the initializer's `unless` guard works.
-  #
-  # Verifying the disabled path for real requires booting a second Rails
-  # process (or engine instance) with the preference already set to true
-  # before initialization — out of reach of this example group. Flagged for
-  # the coordinator rather than shipped as a misleading green test.
+  describe 'registry survives a Zeitwerk reload' do
+    # Same mechanism, and same regression, as
+    # spec/models/aypex_bank_transfer/reconcilers/manual_spec.rb: spree_core's
+    # own `to_prepare` hook calls `Spree::Events.reset!` on every reload,
+    # which drops Proc-based subscribers. Registering from `after_initialize`
+    # (the pre-review version of this gem) meant that reset would run once
+    # and never be undone — the default mailer would stop firing for the
+    # rest of the process. Registering from `to_prepare` instead (see
+    # config/initializers/spree.rb) means AypexBankTransfer.
+    # register_default_mailer_subscribers! reruns immediately after that
+    # same reset, in the same reload pass, healing it — but only if our
+    # `to_prepare` block genuinely runs after spree_core's. This test proves
+    # that ordering holds, the same way the reconciler test proves it for
+    # Reconcilers::Base's registry.
+    it 'still enqueues mail after a simulated reload' do
+      Rails.application.reloader.prepare!
+
+      expect do
+        payment_method.create_payment_session(order: order)
+      end.to have_enqueued_mail(AypexBankTransfer::InstructionsMailer, :instructions)
+    end
+
+    it 'does not stack duplicate subscriptions across repeated reloads' do
+      3.times { Rails.application.reloader.prepare! }
+
+      expect(
+        Spree::Events.registry.subscriptions_for('bank_transfer.instructions_ready').size
+      ).to eq(1)
+      expect(
+        Spree::Events.registry.subscriptions_for('bank_transfer.reminder_due').size
+      ).to eq(1)
+
+      # A duplicate subscription would enqueue the same mail twice per
+      # publish; have_enqueued_mail defaults to asserting exactly once.
+      expect do
+        payment_method.create_payment_session(order: order)
+      end.to have_enqueued_mail(AypexBankTransfer::InstructionsMailer, :instructions).once
+    end
+  end
+
+  describe 'when the default mailer is disabled' do
+    # Unlike the pre-review version of this initializer, disable_default_mailer
+    # is no longer read only once at boot: the `unless` guard lives inside
+    # `to_prepare` now (see config/initializers/spree.rb), alongside the
+    # subscription call it guards, so it is re-evaluated on every reload. A
+    # real toggle still requires a reload to take effect (there is no live
+    # unsubscribe), but a simulated reload via Rails.application.reloader.
+    # prepare! makes the disabled path exercisable in-process, which the
+    # pre-review boot-only design could not offer.
+    it 'does not (re-)subscribe the default mailer after a reload with the registry cleared' do
+      # Spree::Events.reset! is exactly what spree_core's own to_prepare hook
+      # calls on every real reload (see lib/aypex_bank_transfer/subscribers.rb)
+      # -- invoking it directly here stands in for that, the same way the
+      # reconciler regression spec clears its registry directly.
+      Spree::Events.reset!
+
+      AypexBankTransfer::Config.disable_default_mailer = true
+
+      begin
+        Rails.application.reloader.prepare!
+
+        expect(Spree::Events.registry.registered?('bank_transfer.instructions_ready')).to be(false)
+
+        expect do
+          payment_method.create_payment_session(order: order)
+        end.not_to have_enqueued_mail(AypexBankTransfer::InstructionsMailer, :instructions)
+      ensure
+        AypexBankTransfer::Config.disable_default_mailer = false
+        Rails.application.reloader.prepare!
+      end
+    end
+  end
 end
