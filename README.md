@@ -40,12 +40,10 @@ expires and no reminders send:
 |---|---|---|
 | `AypexBankTransfer::ExpireSessionsJob` | Hourly | Cancels and restocks orders whose payment window has lapsed |
 | `AypexBankTransfer::SendRemindersJob` | Daily | Sends payment reminders as the expiry deadline approaches |
+| `AypexBankTransfer::PollJob` | Every `poll_interval_minutes` (default 15) | Polls the configured reconciler for new transfers; a successful run is what arms the health gate below |
 
-(A `PollJob`, driving reconciler polling on a schedule, is planned but not
-yet part of this gem — this table will grow to three rows when it lands.)
-
-Wire both into your scheduler (`sidekiq-cron`, `whenever`, etc.) as part of
-installing this gem, not as an afterthought.
+Wire all three into your scheduler (`sidekiq-cron`, `whenever`, etc.) as part
+of installing this gem, not as an afterthought.
 
 ## The health gate
 

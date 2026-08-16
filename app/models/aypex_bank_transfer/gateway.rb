@@ -108,6 +108,24 @@ module AypexBankTransfer
       reconciler_state.healthy?(preferred_poll_interval_minutes)
     end
 
+    # Called by Spree::Api::V3::Webhooks::PaymentsController. Signature
+    # verification happens inside the reconciler and raises
+    # Spree::PaymentMethod::WebhookSignatureError, which the controller turns
+    # into a 401.
+    def parse_webhook_event(raw_body, headers)
+      data = reconciler.parse_webhook(raw_body, headers)
+      return nil if data.nil?
+
+      transfer = IngestTransfer.new(payment_method: self, transfer_data: data).call
+      return nil unless transfer.applied?
+
+      {
+        action: :captured,
+        payment_session: transfer.payment_session,
+        metadata: { incoming_transfer_id: transfer.id }
+      }
+    end
+
     def bank_details
       {
         account_name: preferred_account_name,
