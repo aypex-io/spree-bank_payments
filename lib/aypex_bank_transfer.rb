@@ -8,6 +8,8 @@ module AypexBankTransfer
 
     @pg_trgm_available = ActiveRecord::Base.connection.extension_enabled?('pg_trgm')
   rescue StandardError
-    @pg_trgm_available = false
+    # Deliberately NOT memoized: a transient connection failure must not disable
+    # payer-name suggestions for the lifetime of the process.
+    false
   end
 end

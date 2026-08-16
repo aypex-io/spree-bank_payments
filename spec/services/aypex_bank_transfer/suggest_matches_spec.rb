@@ -30,6 +30,14 @@ RSpec.describe AypexBankTransfer::SuggestMatches do
     expect(described_class.new(transfer: transfer).call.length).to eq(5)
   end
 
+  it 'includes a fuzzy payer-name match even when the amount does not match' do
+    order = create(:order, bill_address: create(:address, firstname: 'Jane', lastname: 'Doe'))
+    match = create(:bank_transfer_payment_session,
+                   payment_method: payment_method, order: order, amount: 999.00, currency: 'GBP')
+
+    expect(described_class.new(transfer: transfer).call).to include(match)
+  end
+
   it 'degrades to amount matching when pg_trgm is unavailable' do
     allow(AypexBankTransfer).to receive(:pg_trgm_available?).and_return(false)
     match = create(:bank_transfer_payment_session,
