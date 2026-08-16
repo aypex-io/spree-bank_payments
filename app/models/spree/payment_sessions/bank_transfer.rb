@@ -1,7 +1,20 @@
 module Spree
   module PaymentSessions
     class BankTransfer < Spree::PaymentSession
+      # `-> { with_deleted }`: BankAccount is acts_as_paranoid, and without
+      # this a soft-deleted account (an admin decision, see the destroy
+      # action) resolves to nil here -- silently blanking the coordinates an
+      # open session already quoted the customer. Soft-delete instead of
+      # hard-delete exists precisely so that quote survives; this scope is
+      # what actually keeps that promise.
+      # `-> { with_deleted }`: BankAccount is acts_as_paranoid, and without
+      # this a soft-deleted account (an admin decision, see the destroy
+      # action) resolves to nil here -- silently blanking the coordinates an
+      # open session already quoted the customer. Soft-delete instead of
+      # hard-delete exists precisely so that quote survives; this scope is
+      # what actually keeps that promise.
       belongs_to :bank_account,
+                 -> { with_deleted },
                  class_name: 'Spree::BankPayments::BankAccount',
                  optional: true
 

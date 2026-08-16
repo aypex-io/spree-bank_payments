@@ -14,7 +14,10 @@ module Spree
       # queue from applying a transfer received on one bank-transfer gateway
       # to a session belonging to a different one.
       belongs_to :payment_method, class_name: 'Spree::PaymentMethod', optional: true
+      # See the identical note on Spree::PaymentSessions::BankTransfer#bank_account:
+      # without `with_deleted`, a soft-deleted account resolves to nil here.
       belongs_to :bank_account,
+                 -> { with_deleted },
                  class_name: 'Spree::BankPayments::BankAccount',
                  optional: true
 

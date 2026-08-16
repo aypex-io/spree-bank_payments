@@ -14,6 +14,17 @@ module Spree
       belongs_to :payment_method, class_name: 'Spree::PaymentMethod'
 
       validates :currency, presence: true, format: { with: /\A[A-Za-z]{3}\z/ }
+      # Mirrors index_bp_bank_accounts_on_pm_and_currency_offered exactly
+      # (payment_method_id + currency, where offered AND deleted_at IS NULL --
+      # acts_as_paranoid's default scope already excludes soft-deleted rows
+      # from this uniqueness check). The database index is the real
+      # guarantee; this validation exists only so an admin offering a second
+      # account for a currency they already offer sees a form error instead
+      # of an unrescued RecordNotUnique.
+      validates :currency,
+                uniqueness: { scope: :payment_method_id, conditions: -> { where(offered: true) },
+                              message: 'already has an offered account for this currency' },
+                if: :offered?
       validate :has_a_usable_detail_set
 
       scope :offered, -> { where(offered: true) }

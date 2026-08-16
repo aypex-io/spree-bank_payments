@@ -20,14 +20,22 @@ module Spree
         else
           render :new
         end
+      rescue JSON::ParserError
+        @bank_account = @payment_method.bank_accounts.new(raw_bank_account_params.except(:details))
+        @bank_account.errors.add(:details, 'must contain valid JSON')
+        render :new
       end
 
       def edit; end
 
       def update
         # Synced accounts are the provider's record, not ours -- editing their
-        # details here would silently diverge from the account actually watched.
-        if @bank_account.synced? && bank_account_params.key?(:details)
+        # currency or details here would silently diverge from the account
+        # actually watched. Checked against the *raw*, unparsed params so a
+        # malformed `details` payload can't slip past this guard by raising
+        # JSON::ParserError before it runs (see the JSON.parse call in
+        # #bank_account_params).
+        if @bank_account.synced? && synced_field_present?
           flash[:error] = 'Synced accounts cannot be edited. Re-sync to refresh them.'
           return redirect_to_index
         end
@@ -37,6 +45,9 @@ module Spree
         else
           render :edit
         end
+      rescue JSON::ParserError
+        @bank_account.errors.add(:details, 'must contain valid JSON')
+        render :edit
       end
 
       def destroy
@@ -68,10 +79,16 @@ module Spree
       # would otherwise read as "every account disappeared" and deactivate
       # all of them). Passing a pre-built plan here would bypass that guard
       # entirely -- see SyncAccounts#apply! and #plan.
+      #
+      # Rescues only EmptyResponseError -- the one operational failure
+      # SyncAccounts itself distinguishes from a programming error. A bare
+      # `rescue StandardError` here would also swallow a NoMethodError or
+      # similar bug and report it to the admin as an unremarkable "Sync
+      # failed", hiding it instead of surfacing it as the 500 it should be.
       def sync
         Spree::BankPayments::SyncAccounts.new(payment_method: @payment_method).apply!
         redirect_to_index 'Accounts synced.'
-      rescue Spree::BankPayments::SyncAccounts::EmptyResponseError, StandardError => e
+      rescue Spree::BankPayments::SyncAccounts::EmptyResponseError => e
         flash[:error] = "Sync failed: #{e.message}. No accounts were changed."
         redirect_to_index
       end
@@ -91,8 +108,17 @@ module Spree
         redirect_to spree.admin_payment_method_bank_accounts_path(@payment_method)
       end
 
+      def raw_bank_account_params
+        params.require(:bank_account).permit(:currency, :offered, :active, :details)
+      end
+
+      def synced_field_present?
+        raw = raw_bank_account_params
+        raw.key?(:currency) || raw.key?(:details)
+      end
+
       def bank_account_params
-        permitted = params.require(:bank_account).permit(:currency, :offered, :active, :details)
+        permitted = raw_bank_account_params
         permitted[:details] = JSON.parse(permitted[:details]) if permitted[:details].is_a?(String)
         permitted
       end

@@ -7,10 +7,18 @@
     combined status so the two don't get conflated. %>
 <h1>Bank accounts — <%= @payment_method.name %></h1>
 
-<% if @bank_accounts.none?(&:offered?) %>
+<%# Store-wide "nothing offered" would only catch the case where every
+    currency has no offered account -- with GBP offered and EUR not, EUR
+    customers silently lose bank transfer and a store-wide check says
+    nothing. Warn per currency instead, naming each one that has accounts
+    but none offered. %>
+<% unoffered_currencies = @bank_accounts.group_by(&:currency).
+     select { |_currency, accounts| accounts.none?(&:offered?) }.keys %>
+<% if unoffered_currencies.any? %>
   <div class="alert alert-warning">
-    No account is offered yet — bank transfer is unavailable to customers
-    until you choose one per currency.
+    No account is offered for <%= unoffered_currencies.sort.to_sentence %> —
+    bank transfer is unavailable to customers in <%= unoffered_currencies.one? ? 'that currency' : 'those currencies' %>
+    until you choose one.
   </div>
 <% end %>
 

@@ -22,4 +22,18 @@ RSpec.describe Spree::BankPayments::IncomingTransfer do
       expect(duplicate).not_to be_valid
     end
   end
+
+  # Same rationale as Spree::PaymentSessions::BankTransfer#bank_account: a
+  # transfer's linked account is an audit trail entry, not a live pointer --
+  # soft-deleting the account must not blank it out from under a record
+  # already matched against it.
+  it 'still resolves the bank_account association after the account is soft-deleted' do
+    payment_method = create(:bank_transfer_gateway)
+    account = create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP')
+    transfer = create(:bank_transfer_incoming_transfer, bank_account_id: account.id)
+
+    account.destroy
+
+    expect(transfer.reload.bank_account).to be_present
+  end
 end

@@ -32,6 +32,21 @@ RSpec.describe Spree::BankPayments::BankAccount do
     expect { second.save!(validate: false) }.to raise_error(ActiveRecord::RecordNotUnique)
   end
 
+  # The unique index is the real guarantee (see the spec above, which
+  # bypasses validation to prove it) -- this validation exists only so the
+  # admin who trips it sees a form error rather than an unrescued
+  # RecordNotUnique. Task 1 shipped the index with no validation in front
+  # of it; Task 9's admin form is what actually makes this reachable.
+  it 'reports a validation error, not a database exception, for a second offered account in the same currency' do
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+    second = build(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
+
+    expect(second).not_to be_valid
+    expect(second.errors[:currency]).to be_present
+    expect { second.save }.not_to raise_error
+    expect(second).not_to be_persisted
+  end
+
   it 'allows a second NON-offered account for the same currency' do
     create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
     second = build(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: false)

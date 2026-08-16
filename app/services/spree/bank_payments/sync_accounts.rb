@@ -54,8 +54,15 @@ module Spree
       #   re-approval trigger, which fires mid-OAuth-redirect: creating and
       #   refreshing accounts is always safe, but withdrawing a currency from
       #   the storefront needs a human looking at a diff.
-      def apply!(prepared = nil, additive_only: false)
-        prepared ||= plan
+      #
+      # Deliberately takes no `prepared`/plan argument: a caller-supplied
+      # plan could be built long before it's applied (e.g. held across an
+      # admin request), and that staleness is exactly what the empty-response
+      # abort guard in #plan exists to catch. Always deriving the plan here,
+      # in the same call, means the guard can't be bypassed structurally --
+      # see the "does not build and hold a plan" spec on the admin controller.
+      def apply!(additive_only: false)
+        prepared = plan
 
         ActiveRecord::Base.transaction do
           prepared[:create].each do |data|
