@@ -36,15 +36,13 @@ foundation for further banking providers. The cost is that `Reconcilers::Base`
 is a published cross-gem contract: changing it requires a coordinated release.
 The interface is kept deliberately narrow to limit that exposure.
 
-Naming: **both** `spree_bank_transfer` and `spree-bank-transfer` are taken on
-RubyGems by vinsol (v2.0.4, last published November 2013), so the gem cannot
-publish under that name yet. The repo and Ruby module have nonetheless been
-renamed to `spree_bank_transfer` (2026-08-16) to carry the community `spree_`
-prefix used by `spree_stripe` and `spree_paypal_checkout`, and to make that
-adoption case to vinsol directly rather than settle for an `aypex_`-prefixed
-name long-term. Installation is from GitHub for now, matching the
-`spree_paypal_checkout` pattern, pending either a name grant or a fallback
-rename if that doesn't materialize.
+Naming: the repo and Ruby module are `spree_bank_transfer` / `SpreeBankTransfer`,
+carrying the community `spree_` prefix used by `spree_stripe` and
+`spree_paypal_checkout`. The RubyGems name is currently held by vinsol's
+dormant `spree_bank_transfer` (v2.0.4, single release, published November
+2013, ~4,967 downloads); publishing under that name requires an adoption
+request to RubyGems, which is the intended route. Installation is from
+GitHub in the meantime, matching the `spree_paypal_checkout` pattern.
 
 Target: Spree 5.6, Rails 8.1, Ruby 4.0.
 
@@ -370,12 +368,10 @@ Phase 2 consumes a published interface.
    a follow-up `GET /transactions/{id}` is required to read the legs.
    `developer.revolut.com` blocks automated fetching, so this needs a manual
    read of the docs.
-3. ~~Confirm the gem name is available on RubyGems.~~ **Resolved 2026-08-15** —
-   the `aypex_bank_transfer` and `aypex_bank_transfer_revolut` spellings were
-   confirmed free; the `spree_bank_transfer`/`spree-bank-transfer` spellings
-   belong to vinsol. **Updated 2026-08-16** — repo and module renamed to
-   `spree_bank_transfer` anyway (see Scope); the RubyGems name remains
-   pending vinsol.
+3. ~~Confirm the gem name is available on RubyGems.~~ **Updated 2026-08-16** —
+   the repo and module are `spree_bank_transfer`/`SpreeBankTransfer` (see
+   Scope). The RubyGems name itself is still vinsol's; pursue an adoption
+   request before attempting to publish.
 
 ## References
 

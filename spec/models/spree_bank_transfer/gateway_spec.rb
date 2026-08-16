@@ -22,7 +22,7 @@ RSpec.describe SpreeBankTransfer::Gateway do
   end
 
   it 'exposes bank details for display' do
-    expect(gateway.bank_details).to include(account_name: 'Aypex Ltd', iban: 'GB00TEST00000000000000')
+    expect(gateway.bank_details).to include(account_name: 'Example Store Ltd', iban: 'GB00TEST00000000000000')
   end
 
   # Spree::PaymentMethod#method_type defaults to `type.demodulize.downcase`

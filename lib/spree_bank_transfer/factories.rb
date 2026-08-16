@@ -19,7 +19,7 @@ FactoryBot.define do
         expiry_days: 3,
         discount_percent: 3,
         poll_interval_minutes: 15,
-        account_name: 'Aypex Ltd',
+        account_name: 'Example Store Ltd',
         account_iban: 'GB00TEST00000000000000',
         account_bic: 'REVOGB21'
       }

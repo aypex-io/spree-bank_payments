@@ -45,7 +45,7 @@ RSpec.describe 'EnablePgTrgm migration', type: :migration do
       def enable_extension(name, **)
         return super unless name.to_s == 'pg_trgm'
 
-        execute(%(CREATE EXTENSION "aypex_no_such_extension"))
+        execute(%(CREATE EXTENSION "no_such_extension_xyz"))
       end
     end
     ActiveRecord::ConnectionAdapters::PostgreSQLAdapter.prepend(ForceExtensionFailure)

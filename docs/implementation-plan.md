@@ -557,7 +557,7 @@ RSpec.describe SpreeBankTransfer::Gateway do
   end
 
   it 'exposes bank details for display' do
-    expect(gateway.bank_details).to include(account_name: 'Aypex Ltd', iban: 'GB00TEST00000000000000')
+    expect(gateway.bank_details).to include(account_name: 'Example Store Ltd', iban: 'GB00TEST00000000000000')
   end
 end
 ```
@@ -676,7 +676,7 @@ Append to `lib/spree_bank_transfer/factories.rb` inside the existing `FactoryBot
         expiry_days: 3,
         discount_percent: 3,
         poll_interval_minutes: 15,
-        account_name: 'Aypex Ltd',
+        account_name: 'Example Store Ltd',
         account_iban: 'GB00TEST00000000000000',
         account_bic: 'REVOGB21'
       }
