@@ -101,12 +101,23 @@ module Spree
         'spree_bank_payments'
       end
 
+      # Memoized because #health calls it twice and #health runs on every
+      # checkout render for a non-Manual gateway -- unmemoized that was two
+      # round trips per render, and on a gateway that has never polled, two
+      # find_or_create_by! calls.
       def reconciler_state
-        Spree::BankPayments::ReconcilerState.find_or_create_by!(payment_method_id: id)
+        @reconciler_state ||= find_or_create_reconciler_state
       end
 
       def reconciler
         @reconciler ||= Reconcilers::Base.build(payment_method: self)
+      end
+
+      # Memoized state must not outlive an explicit reload of the record.
+      def reload(*)
+        @reconciler_state = nil
+        @reconciler = nil
+        super
       end
 
       # Gate on both the reconciler's own opinion and our recorded poll history.
@@ -227,6 +238,18 @@ module Spree
       end
 
       private
+
+      # The first-ever concurrent checkout render on a gateway is a real race:
+      # two requests both miss the SELECT, both INSERT, and the unique index on
+      # payment_method_id makes the loser raise. PollJob already reasons about
+      # this race (its rescue guards a nil `state`); the checkout path did not.
+      # By the time the loser is here the winner has committed a row, so
+      # re-reading it is the whole recovery.
+      def find_or_create_reconciler_state
+        Spree::BankPayments::ReconcilerState.find_or_create_by!(payment_method_id: id)
+      rescue ActiveRecord::RecordNotUnique
+        Spree::BankPayments::ReconcilerState.find_by!(payment_method_id: id)
+      end
 
       # #health is reached from available_for_order?, which runs on every
       # checkout render for every customer. Reconcilers::Base.build raises for

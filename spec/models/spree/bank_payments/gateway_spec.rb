@@ -41,6 +41,31 @@ RSpec.describe Spree::BankPayments::Gateway do
     expect { gateway.reconciler_state }.to change(Spree::BankPayments::ReconcilerState, :count).by(1)
   end
 
+  # #health calls this twice, on every checkout render.
+  it 'memoizes its reconciler state rather than re-querying per call' do
+    state = gateway.reconciler_state
+
+    expect(gateway.reconciler_state).to equal(state)
+  end
+
+  it 'drops the memoized reconciler state on reload' do
+    state = gateway.reconciler_state
+
+    expect(gateway.reload.reconciler_state).not_to equal(state)
+  end
+
+  # Two first-ever concurrent checkout renders both miss the SELECT and both
+  # INSERT; the unique index on payment_method_id makes the loser raise. The
+  # winner has committed a row by then, so the loser must read it, not 500.
+  it 'recovers the row when a concurrent first-ever call wins the insert race' do
+    existing = Spree::BankPayments::ReconcilerState.create!(payment_method_id: gateway.id)
+
+    allow(Spree::BankPayments::ReconcilerState).
+      to receive(:find_or_create_by!).and_raise(ActiveRecord::RecordNotUnique.new('duplicate key'))
+
+    expect(gateway.reconciler_state).to eq(existing)
+  end
+
   it 'exposes the offered account details for the store currency via the deprecated shim' do
     create(:bank_payments_bank_account, payment_method: gateway, currency: Spree::Config[:currency], offered: true)
 
