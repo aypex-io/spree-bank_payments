@@ -162,4 +162,51 @@ RSpec.describe Spree::BankPayments::BankAccount do
       expect(described_class.for_currency('gbp')).to be_empty
     end
   end
+
+  # I2. `details` arrives from a raw-JSON textarea. A JSON *object* pasted
+  # where an array belongs used to reach `Array(hash)` -> `[[k, v]]` and blow
+  # up with NoMethodError inside this very validation -- a 500 on a typo.
+  describe 'details shape' do
+    def build_account(details)
+      described_class.new(payment_method: payment_method, currency: 'GBP', details: details)
+    end
+
+    it 'rejects a JSON object with a form error rather than raising' do
+      account = build_account('label' => 'UK payments')
+
+      expect { account.valid? }.not_to raise_error
+      expect(account.errors[:details]).to include('must be a JSON array of detail set objects')
+    end
+
+    it 'rejects an array of non-objects' do
+      account = build_account([%w[IBAN GB00]])
+
+      expect(account).not_to be_valid
+      expect(account.errors[:details]).to include('must be a JSON array of detail set objects')
+    end
+
+    it 'rejects a scalar' do
+      expect(build_account('GB00')).not_to be_valid
+    end
+
+    it 'reports the shape once, not alongside a confusing blank error' do
+      account = build_account('label' => 'UK payments')
+      account.valid?
+
+      expect(account.errors[:details].size).to eq(1)
+    end
+
+    it 'still rejects a well-shaped payload with no usable field' do
+      account = build_account([{ 'label' => 'Empty', 'fields' => [] }])
+
+      expect(account).not_to be_valid
+      expect(account.errors[:details]).to be_present
+    end
+
+    it 'accepts the normal shape' do
+      account = build_account([{ 'label' => 'UK', 'fields' => [{ 'label' => 'IBAN', 'value' => 'GB00' }] }])
+
+      expect(account).to be_valid
+    end
+  end
 end

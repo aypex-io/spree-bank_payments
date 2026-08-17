@@ -25,6 +25,7 @@ module Spree
                 uniqueness: { scope: :payment_method_id, conditions: -> { where(offered: true) },
                               message: 'already has an offered account for this currency' },
                 if: :offered?
+      validate :details_is_a_list_of_objects
       validate :has_a_usable_detail_set
 
       scope :offered, -> { where(offered: true) }
@@ -33,9 +34,14 @@ module Spree
 
       before_validation :normalize_currency
 
-      # @return [Array<Spree::BankPayments::DetailSet>]
+      # @return [Array<Spree::BankPayments::DetailSet>] one per *object* entry.
+      #   Non-object entries are skipped rather than raising: `details` is
+      #   admin-editable JSON, and `Array(a_hash)` yields `[[key, value]]`, so
+      #   an admin pasting `{"label": ...}` where an array belongs used to blow
+      #   up with NoMethodError inside a validation. #details_is_a_list_of_objects
+      #   turns that into a form error instead.
       def detail_sets
-        Array(details).map { |raw| DetailSet.new(raw) }
+        Array(details).grep(Hash).map { |raw| DetailSet.new(raw) }
       end
 
       def synced?
@@ -48,10 +54,23 @@ module Spree
         self.currency = currency.to_s.upcase.presence
       end
 
+      # `details` is a JSON array of detail-set objects. Anything else is a
+      # form error, not an exception: the admin form takes raw JSON, so a
+      # pasted object (`{"label": ...}`) or a bare scalar is an ordinary typo.
+      def details_is_a_list_of_objects
+        return if details.nil?
+        return if details.is_a?(Array) && details.all?(Hash)
+
+        errors.add(:details, 'must be a JSON array of detail set objects')
+      end
+
       # An account with no payable coordinates is worse than no account: the
       # customer is quoted an empty instruction block and has nowhere to send
       # money.
       def has_a_usable_detail_set
+        # Shape already reported; a second error about the same field only
+        # obscures the actual problem.
+        return if errors.key?(:details)
         return if detail_sets.any?(&:usable?)
 
         errors.add(:details, :blank)
