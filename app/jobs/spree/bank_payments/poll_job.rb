@@ -37,23 +37,45 @@ module Spree
         report_failure(payment_method)
       end
 
-      # Ask the reconciler what kind of failure this was. A provider that knows
-      # its consent is dead says :consent_revoked; anything that raises while
-      # answering is itself only transient evidence, so it degrades rather than
-      # escaping and skipping the remaining payment methods.
       # Deliberately takes no exception: the reason is drawn from a closed enum
       # and is never derived from what was raised, because an exception message
       # can carry a bearer token straight into a log aggregator.
+      #
+      # The outer rescue is a backstop only. Reporting health must not depend on
+      # the reconciler being answerable -- see #failure_status.
       def report_failure(payment_method)
-        status = payment_method.reconciler.health
-        status = :transient unless Reconcilers::Base::HEALTH_STATES.include?(status)
-        status = :transient if status == :ok
-
+        status = failure_status(payment_method)
         reason = status == :consent_revoked ? :consent_revoked : :provider_error
 
         report_health(payment_method, status, reason)
       rescue StandardError => e
         Rails.error.report(e, source: 'spree_bank_payments.health')
+      end
+
+      # Ask the reconciler what kind of failure this was. A provider that knows
+      # its consent is dead says :consent_revoked; everything else is
+      # :transient, including "we could not ask".
+      #
+      # Asking is best-effort, and its failure must never cost us the report.
+      # #health is a real network call for most providers, and an unregistered
+      # reconciler key raises out of Reconcilers::Base.build before #health is
+      # even reached -- which is precisely the case an operator most needs told
+      # about, because Gateway#health deliberately keeps offering bank transfer
+      # in that state. Letting the raise reach report_failure's rescue meant a
+      # store whose provider gem had gone took transfers indefinitely with no
+      # event, no log line and no persisted health_status: the documented
+      # reason=provider_error alert, the thesis of this release, never fired.
+      def failure_status(payment_method)
+        status = begin
+          payment_method.reconciler.health
+        rescue StandardError => e
+          Rails.error.report(e, source: 'spree_bank_payments.health')
+          :transient
+        end
+
+        return :transient unless Reconcilers::Base::HEALTH_STATES.include?(status)
+
+        status == :ok ? :transient : status
       end
 
       # Reporting health is bookkeeping about the poll, not part of it. On the

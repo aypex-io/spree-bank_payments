@@ -145,6 +145,35 @@ RSpec.describe Spree::BankPayments::PollJob do
     # #health call itself raises (a real network call for most providers)
     # would escape poll_one, abort the find_each loop, and silently skip
     # every remaining payment method.
+    # The whole thesis of this release is that an operator is alerted when a
+    # gateway stops reconciling. An unregistered reconciler key -- a provider
+    # gem uninstalled while a gateway still names it -- raises from
+    # Reconcilers::Base.build, i.e. before #health is even reached. If that
+    # takes report_failure's rescue with it, the store keeps offering bank
+    # transfer (per #health's deliberate fallback) while the gem's own
+    # alerting stays completely silent: no event, no log line, no persisted
+    # health_status. The only trace would be Rails.error.report.
+    it 'still reports health when the reconciler cannot even be built' do
+      payment_method.preferred_reconciler = 'a_provider_gem_that_was_uninstalled'
+      payment_method.save!(validate: false)
+      allow(Spree::BankPayments::HealthReporter).to receive(:call)
+
+      described_class.perform_now
+
+      expect(Spree::BankPayments::HealthReporter).to have_received(:call).
+        with(hash_including(status: :transient, reason: :provider_error))
+    end
+
+    it 'persists a health_status when the reconciler cannot even be built' do
+      payment_method.preferred_reconciler = 'a_provider_gem_that_was_uninstalled'
+      payment_method.save!(validate: false)
+
+      described_class.perform_now
+
+      expect(payment_method.reconciler_state.reload.health_status).to eq('transient')
+      expect(payment_method.reconciler_state.health_reason).to eq('provider_error')
+    end
+
     it 'still polls the remaining payment methods when the reconciler blows up answering #health too' do
       other = create(:bank_transfer_gateway)
       allow_any_instance_of(Spree::BankPayments::Reconcilers::Manual).
