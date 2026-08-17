@@ -233,6 +233,15 @@ of installing this gem, not as an afterthought.
 
 ## The health gate
 
+There are two health mechanisms in this gem and they decide different things.
+This one — `reconciler_healthy?` — gates **expiry**: whether
+`ExpireSessionsJob` is allowed to cancel anything. The other, described under
+[`#health`](#health), gates **checkout**: whether bank transfer is offered at
+all. Checkout availability is decided by `#health` and only by `#health`; a
+stale poll never removes the payment method from the storefront, and a
+reconciler can be perfectly healthy here while `#health` reports
+`:consent_revoked`, or the reverse.
+
 `ExpireSessionsJob` refuses to cancel orders when the reconciler has not
 polled successfully within three poll intervals (`poll_interval_minutes`).
 This matters because expiry and reconciliation are decoupled: if a bank
@@ -267,8 +276,15 @@ The gem never sends notifications directly — it publishes to
 | `bank_transfer.reminder_due` | An unpaid session is approaching its expiry deadline |
 | `bank_transfer.expired` | `ExpireSessionsJob` cancels an unpaid order |
 | `bank_transfer.session_superseded` | An open session is closed because its order was already paid another way — the order is left alone |
-| `bank_transfer.reconciler_unhealthy` | The health gate trips (see above) |
+| `bank_transfer.reconciler_unhealthy` | The [health gate](#the-health-gate) trips — `ExpireSessionsJob` declined to cancel anything because the reconciler is stale |
+| `bank_transfer.reconciler_health.unhealthy` | `PollJob` reports a *transition* into `:transient` or `:consent_revoked` — and at most hourly while it persists. Carries `status`, `reason` and `consecutive_failures` (see [`#health`](#health)) |
+| `bank_transfer.reconciler_health.recovered` | The same reporter sees health return to `:ok` |
 | `bank_transfer.expiry_failed` | `ExpireSessionsJob` hits an error cancelling a specific session |
+
+The two `reconciler` events are not the same signal:
+`reconciler_unhealthy` says the expiry job stood down, while the
+`reconciler_health.*` pair reports the reconciler's own state and is what
+decides whether checkout offers bank transfer at all.
 
 Payloads contain serializable primitives only — never AR objects — because
 subscribers may run async via ActiveJob. See
@@ -328,7 +344,9 @@ contract methods:
 
 - `#poll(since:)` — returns an `Array<Spree::BankPayments::TransferData>`
 - `#parse_webhook(raw_body, headers)` — returns `TransferData` or `nil`
-- `#health` or `#healthy?` — see below; feeds the health gate above
+- `#health` or `#healthy?` — see below; `#health` decides checkout
+  availability, `#healthy?` feeds the [health gate](#the-health-gate) that
+  decides expiry
 - `#configured?` — boolean; whether credentials/settings are complete
 
 `Base` also provides `#sync_accounts`, returning `[]` by default — override
@@ -352,6 +370,12 @@ differently:
 | `:ok` | Reconciling normally | No |
 | `:transient` | A provider outage or similar — expected to recover on its own | No — those transfers still arrive and reconcile once the provider returns |
 | `:consent_revoked` | The authorisation is dead; nothing will ever reconcile against it | Yes |
+
+**This is the gate that decides whether checkout offers bank transfer**, and
+the only one. The [health gate](#the-health-gate) above is a separate
+mechanism reading a separate signal (`reconciler_healthy?`, driven by poll
+staleness) and it only ever decides whether `ExpireSessionsJob` may cancel —
+it never changes what a customer is shown.
 
 `Gateway#health` is the persisted view `available_for_order?` reads on every
 checkout render — it never calls the reconciler directly, so a provider's live
