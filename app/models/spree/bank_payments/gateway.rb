@@ -127,10 +127,10 @@ module Spree
       # background worker where a live check is fine, and changing it here would
       # alter behaviour this task has no reason to touch.
       def health
+        return :ok if reconciler.instance_of?(Reconcilers::Manual)
+
         persisted = reconciler_state.health_status.presence&.to_sym
         return :consent_revoked if persisted == :consent_revoked
-
-        return :ok if reconciler.instance_of?(Reconcilers::Manual)
 
         reconciler_state.healthy?(preferred_poll_interval_minutes) ? :ok : :transient
       end

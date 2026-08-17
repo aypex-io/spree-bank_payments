@@ -49,37 +49,67 @@ RSpec.describe Spree::BankPayments::Gateway do
 
     before { create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true) }
 
-    # available_for_order? runs on every checkout render. A network call here
-    # would put a bank's latency on the storefront's critical path, so this
-    # reads only what the poll job persisted.
-    it 'never asks the reconciler, so checkout cannot make a network call' do
-      expect(payment_method.reconciler).not_to receive(:health)
+    context 'with a non-Manual reconciler' do
+      # A real anonymous subclass, not a double: instance_of?(Reconcilers::Manual)
+      # must be false for it so the persisted branch in #health is actually
+      # reached, which a bare instance_double of Reconcilers::Base would not
+      # guarantee.
+      let(:fake_reconciler) do
+        Class.new(Spree::BankPayments::Reconcilers::Base) do
+          def health = :ok
+        end.new(payment_method: payment_method)
+      end
 
-      payment_method.health
+      before { allow(payment_method).to receive(:reconciler).and_return(fake_reconciler) }
+
+      # available_for_order? runs on every checkout render. A network call here
+      # would put a bank's latency on the storefront's critical path, so this
+      # reads only what the poll job persisted.
+      it 'never asks the reconciler, so checkout cannot make a network call' do
+        expect(fake_reconciler).not_to receive(:health)
+
+        payment_method.health
+      end
+
+      it 'is :consent_revoked when that is what the poll job recorded' do
+        payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+
+        expect(payment_method.health).to eq(:consent_revoked)
+      end
+
+      it 'withdraws the payment method from checkout when consent is revoked' do
+        payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+
+        expect(payment_method.available_for_order?(order)).to be(false)
+      end
+
+      # A brief provider outage must not pull bank transfer off the storefront:
+      # the transfers still arrive and reconcile once the provider returns.
+      it 'keeps offering at checkout while merely transient' do
+        payment_method.reconciler_state.update!(health_status: 'transient')
+
+        expect(payment_method.available_for_order?(order)).to be(true)
+      end
     end
 
-    it 'is :consent_revoked when that is what the poll job recorded' do
-      payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+    context 'with the Manual reconciler' do
+      it 'is always :ok, which never talks to anything' do
+        expect(payment_method.health).to eq(:ok)
+      end
 
-      expect(payment_method.health).to eq(:consent_revoked)
-    end
+      # The regression test for switching a dead-consent gateway back to
+      # Manual: an admin whose provider consent died switches the reconciler
+      # to manual so they can reconcile by hand. The reconciler_state row
+      # still carries the stale health_status from before the switch. The
+      # Manual short-circuit must win immediately, not wait for the next
+      # poll to overwrite it -- otherwise bank transfer stays withdrawn from
+      # checkout for up to a full poll interval at exactly the moment the
+      # admin was trying to turn it back on.
+      it 'is :ok even with a persisted health_status of consent_revoked' do
+        payment_method.reconciler_state.update!(health_status: 'consent_revoked')
 
-    it 'withdraws the payment method from checkout when consent is revoked' do
-      payment_method.reconciler_state.update!(health_status: 'consent_revoked')
-
-      expect(payment_method.available_for_order?(order)).to be(false)
-    end
-
-    # A brief provider outage must not pull bank transfer off the storefront:
-    # the transfers still arrive and reconcile once the provider returns.
-    it 'keeps offering at checkout while merely transient' do
-      payment_method.reconciler_state.update!(health_status: 'transient')
-
-      expect(payment_method.available_for_order?(order)).to be(true)
-    end
-
-    it 'is always :ok for the manual reconciler, which never talks to anything' do
-      expect(payment_method.health).to eq(:ok)
+        expect(payment_method.health).to eq(:ok)
+      end
     end
   end
 end
