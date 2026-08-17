@@ -230,4 +230,33 @@ RSpec.describe Spree::BankPayments::SyncAccounts do
       expect(manual.reload).to be_active
     end
   end
+
+  describe 'pooled accounts' do
+    def pooled_account_data(pooled:)
+      Spree::BankPayments::AccountData.new(
+        provider_account_id: 'acc_pooled', currency: 'GBP',
+        details: [{ 'label' => 'UK', 'fields' => [{ 'label' => 'IBAN', 'value' => 'GB00X' }] }], pooled: pooled
+      )
+    end
+
+    it 'records pooled on create' do
+      stub_sync([pooled_account_data(pooled: true)])
+
+      described_class.new(payment_method: gateway).apply!
+
+      expect(gateway.bank_accounts.find_by(provider_account_id: 'acc_pooled').pooled).to be(true)
+    end
+
+    # A provider flipping an account to pooled is a safety-relevant change, so
+    # it must not be pinned to whatever was true at first sync.
+    it 'updates pooled on a later sync' do
+      stub_sync([pooled_account_data(pooled: false)])
+      described_class.new(payment_method: gateway).apply!
+
+      stub_sync([pooled_account_data(pooled: true)])
+      described_class.new(payment_method: gateway).apply!
+
+      expect(gateway.bank_accounts.find_by(provider_account_id: 'acc_pooled').pooled).to be(true)
+    end
+  end
 end

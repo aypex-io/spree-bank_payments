@@ -84,6 +84,7 @@ module Spree
               provider_account_id: data.provider_account_id,
               currency: data.currency,
               details: data.details,
+              pooled: data.pooled,
               offered: false,
               active: true,
               synced_at: Time.current
@@ -92,7 +93,7 @@ module Spree
 
           prepared[:update].each do |data|
             account = payment_method.bank_accounts.find_by(provider_account_id: data.provider_account_id)
-            account.update!(currency: data.currency, details: data.details,
+            account.update!(currency: data.currency, details: data.details, pooled: data.pooled,
                             active: true, synced_at: Time.current)
           end
 

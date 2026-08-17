@@ -24,4 +24,19 @@ RSpec.describe Spree::BankPayments::AccountData do
     expect(updated).not_to eq(data)
     expect(updated).to be_a(described_class)
   end
+
+  # Additive: every existing construction call omits it, and a provider that
+  # has never heard of pooling must keep working unchanged.
+  it 'defaults pooled to false when a provider does not report it' do
+    data = described_class.new(provider_account_id: 'acc_1', currency: 'GBP', details: [{ 'label' => 'x' }])
+
+    expect(data.pooled).to be(false)
+  end
+
+  it 'carries pooled when a provider does report it' do
+    data = described_class.new(provider_account_id: 'acc_1', currency: 'GBP',
+                               details: [{ 'label' => 'x' }], pooled: true)
+
+    expect(data.pooled).to be(true)
+  end
 end
