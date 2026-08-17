@@ -104,11 +104,56 @@ every order regardless of currency.
 
 `sync_accounts` returns `Array<Spree::BankPayments::AccountData>`, each
 carrying `provider_account_id`, `currency`, and `details` in the same
-normalised detail-set shape `BankAccount#details` stores — an ordered list
-of `{ label:, schemes:, beneficiary_name:, fields: [[label, value], ...] }`
-hashes, never the provider's raw response shape. See "Writing a
-reconciler" below for the full contract, including the shared example
-group that exercises this method's return type.
+normalised detail-set shape `BankAccount#details` stores — never the
+provider's raw response shape.
+
+`details` is an ordered list of detail-set **objects**. Each has an optional
+`label`, `schemes`, and `beneficiary_name`, plus `fields`: an ordered list of
+`{ 'label' => …, 'value' => … }` **objects** (not `[label, value]` pairs —
+each field is a hash with a `label` key and a `value` key). Fields are
+label/value rather than named keys because bank coordinates are not
+standardised: a sort code in the UK, a routing number in the US, something
+else again in Poland. The views render them generically, so a market the gem
+has never heard of needs no code change.
+
+```ruby
+def sync_accounts
+  [
+    Spree::BankPayments::AccountData.new(
+      provider_account_id: 'acct_9f2c',
+      currency: 'GBP',
+      details: [
+        {
+          'label' => 'UK payments',
+          'schemes' => ['faster_payments'],
+          'beneficiary_name' => 'Example Store Ltd',
+          'fields' => [
+            { 'label' => 'Sort code',      'value' => '04-00-75' },
+            { 'label' => 'Account number', 'value' => '12345678' }
+          ]
+        },
+        {
+          'label' => 'International',
+          'schemes' => ['swift'],
+          'fields' => [
+            { 'label' => 'IBAN', 'value' => 'GB00REVO00000000000000' },
+            { 'label' => 'BIC',  'value' => 'REVOGB21' }
+          ]
+        }
+      ]
+    )
+  ]
+end
+```
+
+`provider_account_id` must be present and stable — it is the key sync
+reconciles on. A report with a blank id is skipped rather than applied,
+because it cannot be matched to a row without risking overwriting a
+hand-created account. An account whose detail sets contain no usable field
+is skipped too; both appear under `skipped` in the sync diff.
+
+See "Writing a reconciler" below for the full contract, including the shared
+example group that exercises this method's return type.
 
 ## The admin queue and the manual workflow
 
