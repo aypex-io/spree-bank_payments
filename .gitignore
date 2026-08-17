@@ -7,3 +7,4 @@ coverage/
 .bundle/
 Gemfile.lock
 *.gem
+.worktrees/
