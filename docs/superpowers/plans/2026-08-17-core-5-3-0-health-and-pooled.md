@@ -375,9 +375,11 @@ RSpec.describe Spree::BankPayments::HealthReporter do
     expect(Spree::Events).to have_received(:publish).with('bank_transfer.reconciler_health.recovered', hash_including(payment_method_id: payment_method.id))
   end
 
+  # Both assertions matter. Asserting only the second would pass even if the
+  # first :ok announced a recovery from an outage that never happened, which is
+  # exactly what an unguarded `previous != status` does on a fresh install.
   it 'stays silent while healthy' do
-    report(:ok, :ok)
-
+    expect(report(:ok, :ok)).to be(false)
     expect(report(:ok, :ok)).to be(false)
   end
 
@@ -454,8 +456,12 @@ module Spree
         @previous ||= state.health_status.presence&.to_sym
       end
 
+      # A brand-new payment method has no recorded status, so a bare
+      # `previous != status` treats its first successful poll as a transition
+      # into :ok and announces a recovery from an outage that never happened.
+      # Recovery is only news if we previously said something was wrong.
       def changed?
-        previous != status
+        previous.present? && previous != status
       end
 
       def due?
