@@ -356,11 +356,23 @@ Query the unhealthy log line with LogQL:
 {namespace=~"your-ns-.*"} |= "bank_payments.reconciler.unhealthy" | logfmt
 ```
 
+`reason=` is drawn from a closed enum, never from an exception message or a
+response body — that is how a bearer token reaches a log aggregator. The whole
+vocabulary is four values:
+
+| `reason` | Emitted when |
+|---|---|
+| `ok` | The poll succeeded — carried on the recovery line |
+| `consent_revoked` | The reconciler reported `:consent_revoked` after a failed poll |
+| `provider_error` | Any other poll failure |
+| `unknown` | A reason outside this enum was passed in and was discarded |
+
 `reason="consent_revoked"` warrants an immediate page — nothing will
-reconcile until a human re-authorises it. Any other reason should only alert
-after roughly thirty minutes sustained, since a brief provider blip recovers
-on its own and paging on every transient hiccup trains people to ignore the
-alert.
+reconcile until a human re-authorises it, and unpaid orders will not expire
+while the gem is blind (see [The health gate](#the-health-gate)). Any other
+reason should only alert after roughly thirty minutes sustained, since a brief
+provider blip recovers on its own and paging on every transient hiccup trains
+people to ignore the alert.
 
 Register it:
 

@@ -12,17 +12,13 @@ module Spree
       # A closed set. A provider hands us one of these symbols; anything else
       # becomes :unknown. Reasons are NEVER built from an exception message or
       # a response body -- that is how a bearer token reaches a log aggregator.
-      REASONS = %i[
-        ok
-        provider_unreachable
-        provider_error
-        rate_limited
-        not_configured
-        stale_polling
-        consent_revoked
-        credentials_invalid
-        unknown
-      ].freeze
+      #
+      # Deliberately only the four values core can actually produce. Widening a
+      # published enum later is non-breaking; narrowing it is not, and every
+      # value here is a promise to alert rules that key on reason=. Nothing
+      # hands a provider a way to supply its own reason yet, so a richer
+      # vocabulary would be advertising states no code path can reach.
+      REASONS = %i[ok provider_error consent_revoked unknown].freeze
 
       def self.call(payment_method:, status:, reason:)
         new(payment_method: payment_method, status: status, reason: reason).call

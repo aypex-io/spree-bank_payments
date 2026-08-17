@@ -32,8 +32,11 @@ prose. `:transient` logs WARN, `:consent_revoked` logs ERROR, recovery logs INFO
 `bank_payments.reconciler.unhealthy` and `.recovered` are also published through
 `Spree::Events`.
 
-The `reason` is drawn from a closed enum and unrecognised values collapse to
-`unknown`. It is never built from an exception message or a response body.
+The `reason` is drawn from a closed enum — `ok`, `provider_error`,
+`consent_revoked`, `unknown` — and unrecognised values collapse to `unknown`.
+It is never built from an exception message or a response body. The enum is
+deliberately only what core can actually emit: widening it later is
+non-breaking, narrowing it is not.
 
 **`pooled` on bank accounts.** Carried from `AccountData` through `SyncAccounts`.
 A pooled account shares its coordinates with other customers of the provider, so

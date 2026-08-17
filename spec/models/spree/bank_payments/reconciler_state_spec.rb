@@ -79,10 +79,10 @@ RSpec.describe Spree::BankPayments::ReconcilerState do
     let(:state) { payment_method.reconciler_state }
 
     it 'stores the status and reason as strings' do
-      state.record_health!(status: :consent_revoked, reason: :credentials_invalid, logged: true)
+      state.record_health!(status: :consent_revoked, reason: :consent_revoked, logged: true)
 
       expect(state.reload.health_status).to eq('consent_revoked')
-      expect(state.health_reason).to eq('credentials_invalid')
+      expect(state.health_reason).to eq('consent_revoked')
     end
 
     # health_reported_at means "when we last LOGGED this", not "when we last

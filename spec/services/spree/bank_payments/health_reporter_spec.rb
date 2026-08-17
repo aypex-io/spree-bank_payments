@@ -16,9 +16,9 @@ RSpec.describe Spree::BankPayments::HealthReporter do
   end
 
   it 'logs a revoked consent at ERROR, because it needs a human not a retry' do
-    report(:consent_revoked, :credentials_invalid)
+    report(:consent_revoked, :consent_revoked)
 
-    expect(logger).to have_received(:error).with(/reason=credentials_invalid/)
+    expect(logger).to have_received(:error).with(/reason=consent_revoked/)
   end
 
   # A five-minute poll against a dead consent would otherwise write ~288

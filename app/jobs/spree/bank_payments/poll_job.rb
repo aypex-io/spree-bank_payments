@@ -34,14 +34,17 @@ module Spree
         # here can't escape and wedge every payment method after this one.
         state&.record_failure!(e.message)
         Rails.error.report(e, source: 'spree_bank_payments.poll')
-        report_failure(payment_method, e)
+        report_failure(payment_method)
       end
 
       # Ask the reconciler what kind of failure this was. A provider that knows
       # its consent is dead says :consent_revoked; anything that raises while
       # answering is itself only transient evidence, so it degrades rather than
       # escaping and skipping the remaining payment methods.
-      def report_failure(payment_method, error)
+      # Deliberately takes no exception: the reason is drawn from a closed enum
+      # and is never derived from what was raised, because an exception message
+      # can carry a bearer token straight into a log aggregator.
+      def report_failure(payment_method)
         status = payment_method.reconciler.health
         status = :transient unless Reconcilers::Base::HEALTH_STATES.include?(status)
         status = :transient if status == :ok
