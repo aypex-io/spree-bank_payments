@@ -675,42 +675,85 @@ Append to `spec/models/spree/bank_payments/gateway_health_spec.rb`:
     let(:payment_method) { create(:bank_transfer_gateway) }
     let(:order) { create(:order_with_line_items, currency: 'GBP') }
 
-    before { create(:bank_account, payment_method: payment_method, currency: 'GBP', offered: true) }
+    before { create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true) }
 
-    # available_for_order? runs on every checkout render. A network call here
-    # would put a bank's latency on the storefront's critical path, so this
-    # reads only what the poll job persisted.
-    it 'never asks the reconciler, so checkout cannot make a network call' do
-      expect(payment_method.reconciler).not_to receive(:health)
+    context 'with a non-Manual reconciler' do
+      # A real anonymous subclass, not a double: instance_of?(Reconcilers::Manual)
+      # must be false for it so the persisted branch in #health is actually
+      # reached, which a bare instance_double of Reconcilers::Base would not
+      # guarantee.
+      let(:fake_reconciler) do
+        Class.new(Spree::BankPayments::Reconcilers::Base) do
+          def health = :ok
+        end.new(payment_method: payment_method)
+      end
 
-      payment_method.health
+      before { allow(payment_method).to receive(:reconciler).and_return(fake_reconciler) }
+
+      # available_for_order? runs on every checkout render. A network call here
+      # would put a bank's latency on the storefront's critical path, so this
+      # reads only what the poll job persisted.
+      it 'never asks the reconciler, so checkout cannot make a network call' do
+        expect(fake_reconciler).not_to receive(:health)
+
+        payment_method.health
+      end
+
+      it 'is :consent_revoked when that is what the poll job recorded' do
+        payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+
+        expect(payment_method.health).to eq(:consent_revoked)
+      end
+
+      it 'withdraws the payment method from checkout when consent is revoked' do
+        payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+
+        expect(payment_method.available_for_order?(order)).to be(false)
+      end
+
+      # A brief provider outage must not pull bank transfer off the storefront:
+      # the transfers still arrive and reconcile once the provider returns.
+      it 'keeps offering at checkout while merely transient' do
+        payment_method.reconciler_state.update!(health_status: 'transient')
+
+        expect(payment_method.available_for_order?(order)).to be(true)
+      end
     end
 
-    it 'is :consent_revoked when that is what the poll job recorded' do
-      payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+    context 'with the Manual reconciler' do
+      it 'is always :ok, which never talks to anything' do
+        expect(payment_method.health).to eq(:ok)
+      end
 
-      expect(payment_method.health).to eq(:consent_revoked)
-    end
+      # The regression test for switching a dead-consent gateway back to
+      # Manual: an admin whose provider consent died switches the reconciler
+      # to manual so they can reconcile by hand. The reconciler_state row
+      # still carries the stale health_status from before the switch. The
+      # Manual short-circuit must win immediately, not wait for the next
+      # poll to overwrite it -- otherwise bank transfer stays withdrawn from
+      # checkout for up to a full poll interval at exactly the moment the
+      # admin was trying to turn it back on.
+      it 'is :ok even with a persisted health_status of consent_revoked' do
+        payment_method.reconciler_state.update!(health_status: 'consent_revoked')
 
-    it 'withdraws the payment method from checkout when consent is revoked' do
-      payment_method.reconciler_state.update!(health_status: 'consent_revoked')
-
-      expect(payment_method.available_for_order?(order)).to be(false)
-    end
-
-    # A brief provider outage must not pull bank transfer off the storefront:
-    # the transfers still arrive and reconcile once the provider returns.
-    it 'keeps offering at checkout while merely transient' do
-      payment_method.reconciler_state.update!(health_status: 'transient')
-
-      expect(payment_method.available_for_order?(order)).to be(true)
-    end
-
-    it 'is always :ok for the manual reconciler, which never talks to anything' do
-      expect(payment_method.health).to eq(:ok)
+        expect(payment_method.health).to eq(:ok)
+      end
     end
   end
 ```
+
+**Controller ruling.** An earlier draft of this step used the Manual-backed
+factory (`create(:bank_transfer_gateway)`'s default reconciler) to assert
+provider `#health` behaviour, while `Gateway#health` short-circuits to `:ok`
+for `Reconcilers::Manual` before it ever reads persisted state. Those two
+things directly contradict each other: the Manual short-circuit makes the
+persisted-state assertions unreachable through the default factory. The
+ruling was to keep the Manual short-circuit first in the implementation (an
+admin switching a dead-consent gateway back to Manual must regain checkout
+availability immediately, not wait out a stale `health_status`) and to test
+the persisted-state branch against a real non-Manual reconciler subclass
+instead, with a separate Manual-reconciler context covering the
+short-circuit itself. That is what Step 1 above and the shipped code reflect.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -809,30 +852,38 @@ Append to `spec/models/spree/bank_payments/account_data_spec.rb`:
 
 Append to `spec/services/spree/bank_payments/sync_accounts_spec.rb`:
 
+`SyncAccounts.new` takes `payment_method:` only — it always asks
+`payment_method.reconciler.sync_accounts` for the report, rather than
+accepting one directly. Stub that method (the file's existing `stub_sync`
+helper does this) instead of passing a `reported:` keyword:
+
 ```ruby
   describe 'pooled accounts' do
-    let(:payment_method) { create(:bank_transfer_gateway) }
-
-    def account_data(pooled:)
+    def pooled_account_data(pooled:)
       Spree::BankPayments::AccountData.new(
         provider_account_id: 'acc_pooled', currency: 'GBP',
-        details: [{ 'label' => 'UK', 'fields' => [%w[IBAN GB00X]] }], pooled: pooled
+        details: [{ 'label' => 'UK', 'fields' => [{ 'label' => 'IBAN', 'value' => 'GB00X' }] }], pooled: pooled
       )
     end
 
     it 'records pooled on create' do
-      described_class.new(payment_method: payment_method, reported: [account_data(pooled: true)]).apply!
+      stub_sync([pooled_account_data(pooled: true)])
 
-      expect(payment_method.bank_accounts.find_by(provider_account_id: 'acc_pooled').pooled).to be(true)
+      described_class.new(payment_method: gateway).apply!
+
+      expect(gateway.bank_accounts.find_by(provider_account_id: 'acc_pooled').pooled).to be(true)
     end
 
     # A provider flipping an account to pooled is a safety-relevant change, so
     # it must not be pinned to whatever was true at first sync.
     it 'updates pooled on a later sync' do
-      described_class.new(payment_method: payment_method, reported: [account_data(pooled: false)]).apply!
-      described_class.new(payment_method: payment_method, reported: [account_data(pooled: true)]).apply!
+      stub_sync([pooled_account_data(pooled: false)])
+      described_class.new(payment_method: gateway).apply!
 
-      expect(payment_method.bank_accounts.find_by(provider_account_id: 'acc_pooled').pooled).to be(true)
+      stub_sync([pooled_account_data(pooled: true)])
+      described_class.new(payment_method: gateway).apply!
+
+      expect(gateway.bank_accounts.find_by(provider_account_id: 'acc_pooled').pooled).to be(true)
     end
   end
 ```
@@ -929,7 +980,7 @@ require 'spec_helper'
 RSpec.describe 'auto-apply against a pooled account' do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let!(:account) do
-    create(:bank_account, payment_method: payment_method, currency: 'GBP',
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP',
                           offered: true, pooled: true, provider_account_id: 'acc_pool')
   end
   let(:order) { create(:completed_order_with_totals, currency: 'GBP') }
