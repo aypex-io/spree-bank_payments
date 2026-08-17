@@ -12,8 +12,10 @@ module Spree
           nil
         end
 
-        def healthy?
-          true
+        # The manual reconciler never talks to anything, so it cannot be
+        # unhealthy.
+        def health
+          :ok
         end
 
         def configured?

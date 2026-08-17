@@ -30,6 +30,10 @@ RSpec.shared_examples 'a bank transfer reconciler' do
     expect([true, false]).to include(reconciler.healthy?)
   end
 
+  it 'answers #health with a member of the published enum' do
+    expect(Spree::BankPayments::Reconcilers::Base::HEALTH_STATES).to include(reconciler.health)
+  end
+
   it 'answers #configured? with a boolean' do
     expect([true, false]).to include(reconciler.configured?)
   end

@@ -41,9 +41,34 @@ module Spree
           raise NotImplementedError, "#{self.class} must implement #parse_webhook"
         end
 
+        HEALTH_STATES = %i[ok transient consent_revoked].freeze
+
+        # @return [Symbol] one of HEALTH_STATES.
+        #
+        # :transient still offers at checkout -- a brief provider outage must
+        # not pull bank transfer off the storefront, because the money still
+        # arrives and reconciles once the provider returns. Only
+        # :consent_revoked withdraws it, because in that state nothing will
+        # ever reconcile.
+        #
+        # Providers written against <= 5.2 implement #healthy? only, so the
+        # default derives from it.
+        def health
+          healthy? ? :ok : :transient
+        end
+
         # @return [Boolean] false means the expiry job must not cancel anything
+        #
+        # Providers written against >= 5.3 may implement #health only, so the
+        # default derives from it. The two defaults are mutually recursive by
+        # construction; the owner check breaks the cycle and turns "overrode
+        # neither" into a clear contract error instead of a SystemStackError.
         def healthy?
-          raise NotImplementedError, "#{self.class} must implement #healthy?"
+          if method(:health).owner == Spree::BankPayments::Reconcilers::Base
+            raise NotImplementedError, "#{self.class} must implement #health or #healthy?"
+          end
+
+          health == :ok
         end
 
         # @return [Boolean] whether credentials and settings are complete
