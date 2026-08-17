@@ -5,7 +5,11 @@
     The reference, amount, and deadline are the functional core of this
     partial: auto-matching depends entirely on the customer quoting the
     reference correctly, so it must stay visually unmissable. %>
-<% detail_sets = payment_session.payment_method.bank_details_for(payment_session.currency) %>
+<%# Deliberately the session's own account, not the currently offered one --
+    see Spree::PaymentSessions::BankTransfer#bank_detail_sets. Switching the
+    offered account must never change what an already-quoted customer is
+    shown. %>
+<% detail_sets = payment_session.bank_detail_sets %>
 
 <section class="bank-transfer-instructions">
   <div class="bank-transfer-instructions__highlight">

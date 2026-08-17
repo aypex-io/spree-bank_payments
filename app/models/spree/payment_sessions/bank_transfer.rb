@@ -34,6 +34,31 @@ module Spree
         external_id
       end
 
+      # The coordinates this session was actually quoted against -- the single
+      # source of truth for every customer-facing surface (the instructions
+      # partial and both InstructionsMailer actions).
+      #
+      # Reading `payment_method.bank_details_for(currency)` here instead would
+      # render whatever account is offered *now*, not what the customer was
+      # told: switch the offered GBP account from A to B and every open
+      # session's reminder starts quoting B's coordinates against a reference
+      # generated for A, sending the money to the wrong account. Un-offer the
+      # currency entirely and the block renders empty -- a reference, an
+      # amount, a deadline, and nowhere to send it. `bank_account` is scoped
+      # `-> { with_deleted }` precisely so a soft-deleted account still
+      # resolves here.
+      #
+      # The fallback covers the two cases with no recorded account: sessions
+      # created before 5.2.0, and reconcilers (e.g. Manual) running against a
+      # gateway whose account was never linked.
+      #
+      # @return [Array<Spree::BankPayments::DetailSet>]
+      def bank_detail_sets
+        return payment_method.bank_details_for(currency) if bank_account.nil?
+
+        bank_account.detail_sets.select(&:usable?)
+      end
+
       # Event subscribers may run async via ActiveJob, so payloads must be
       # serializable primitives — never AR objects.
       def notification_payload
