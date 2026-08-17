@@ -138,5 +138,22 @@ RSpec.describe Spree::BankPayments::PollJob do
       expect { described_class.perform_now }.not_to raise_error
       expect(other.reconciler_state.reload.consecutive_failures).to eq(1)
     end
+
+    # report_failure is invoked from inside poll_one's own rescue clause, so
+    # an exception raised within it is NOT caught by that same rescue --
+    # report_failure needs its own inner rescue, or a reconciler whose
+    # #health call itself raises (a real network call for most providers)
+    # would escape poll_one, abort the find_each loop, and silently skip
+    # every remaining payment method.
+    it 'still polls the remaining payment methods when the reconciler blows up answering #health too' do
+      other = create(:bank_transfer_gateway)
+      allow_any_instance_of(Spree::BankPayments::Reconcilers::Manual).
+        to receive(:poll).and_raise(StandardError, 'nope')
+      allow_any_instance_of(Spree::BankPayments::Reconcilers::Manual).
+        to receive(:health).and_raise(StandardError, 'health check unreachable')
+
+      expect { described_class.perform_now }.not_to raise_error
+      expect(other.reconciler_state.reload.consecutive_failures).to eq(1)
+    end
   end
 end
