@@ -29,8 +29,15 @@ overriding only `#health` gets `#healthy?` derived in turn.
 **Health transition logging, owned by core.** Logged on transition and at most
 hourly thereafter, with a stable `event=` key so alert rules never depend on
 prose. `:transient` logs WARN, `:consent_revoked` logs ERROR, recovery logs INFO.
-`bank_payments.reconciler.unhealthy` and `.recovered` are also published through
-`Spree::Events`.
+`bank_transfer.reconciler_health.unhealthy` and
+`bank_transfer.reconciler_health.recovered` are also published through
+`Spree::Events`. They sit under the same `bank_transfer.` prefix as every other
+event this gem publishes, so `Spree::Events.subscribe('bank_transfer.*', …)` —
+the pattern the README documents — receives them.
+
+Note these are distinct from the flat `bank_transfer.reconciler_unhealthy`
+published by `ExpireSessionsJob`, which is unchanged: that one says the expiry
+job declined to cancel anything, this pair reports the reconciler's own health.
 
 The `reason` is drawn from a closed enum — `ok`, `provider_error`,
 `consent_revoked`, `unknown` — and unrecognised values collapse to `unknown`.

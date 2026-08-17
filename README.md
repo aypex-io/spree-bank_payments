@@ -359,13 +359,13 @@ check never lands on the storefront's critical path. `PollJob` is what
 refreshes it, reporting health after every poll through `HealthReporter`,
 which logs the transition and then at most hourly while the condition
 persists (WARN for `:transient`, ERROR for `:consent_revoked`, INFO on
-recovery) and publishes `bank_payments.reconciler.unhealthy` /
+recovery) and publishes `bank_transfer.reconciler_health.unhealthy` /
 `.recovered` through `Spree::Events`.
 
 Query the unhealthy log line with LogQL:
 
 ```logql
-{namespace=~"your-ns-.*"} |= "bank_payments.reconciler.unhealthy" | logfmt
+{namespace=~"your-ns-.*"} |= "bank_transfer.reconciler_health.unhealthy" | logfmt
 ```
 
 `reason=` is drawn from a closed enum, never from an exception message or a

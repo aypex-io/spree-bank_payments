@@ -12,7 +12,7 @@ RSpec.describe Spree::BankPayments::HealthReporter do
 
   it 'logs a transition into an unhealthy state at WARN' do
     expect(report(:transient, :provider_error)).to be(true)
-    expect(logger).to have_received(:warn).with(/event=bank_payments\.reconciler\.unhealthy/)
+    expect(logger).to have_received(:warn).with(/event=bank_transfer\.reconciler_health\.unhealthy/)
   end
 
   it 'logs a revoked consent at ERROR, because it needs a human not a retry' do
@@ -40,8 +40,8 @@ RSpec.describe Spree::BankPayments::HealthReporter do
     allow(Spree::Events).to receive(:publish)
 
     expect(report(:ok, :ok)).to be(true)
-    expect(logger).to have_received(:info).with(/event=bank_payments\.reconciler\.recovered/)
-    expect(Spree::Events).to have_received(:publish).with('bank_payments.reconciler.recovered', hash_including(payment_method_id: payment_method.id))
+    expect(logger).to have_received(:info).with(/event=bank_transfer\.reconciler_health\.recovered/)
+    expect(Spree::Events).to have_received(:publish).with('bank_transfer.reconciler_health.recovered', hash_including(payment_method_id: payment_method.id))
   end
 
   it 'stays silent while healthy' do

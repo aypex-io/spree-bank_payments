@@ -66,7 +66,7 @@ The line carries a stable `event=` key so alert rules never depend on prose:
 
 ```
 [spree-bank_payments] reconciler unhealthy
-  event=bank_payments.reconciler.unhealthy
+  event=bank_transfer.reconciler_health.unhealthy
   reconciler=revolut payment_method_id=12 reason=consent_revoked
   consecutive_failures=3 last_success_at=2026-08-17T09:14:22Z
 ```
@@ -75,14 +75,14 @@ The line carries a stable `event=` key so alert rules never depend on prose:
 exception message or response body — that is exactly how a bearer token ends
 up in a log aggregator.
 
-Alongside the log, publish `bank_payments.reconciler.unhealthy` through
+Alongside the log, publish `bank_transfer.reconciler_health.unhealthy` through
 `Spree::Events` so a host can hook it programmatically instead of parsing
 logs. Payload is serializable primitives only; subscribers run async.
 
 For the LGTM stack this reduces to:
 
 ```logql
-{namespace=~"tkf-.*"} |= "bank_payments.reconciler.unhealthy" | logfmt
+{namespace=~"tkf-.*"} |= "bank_transfer.reconciler_health.unhealthy" | logfmt
 ```
 
 Page immediately on `reason="consent_revoked"`; alert on anything else only

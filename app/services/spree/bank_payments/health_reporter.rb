@@ -72,7 +72,7 @@ module Spree
 
         Rails.logger.public_send(severity, <<~LINE.squish)
           [spree-bank_payments] reconciler unhealthy
-          event=bank_payments.reconciler.unhealthy
+          event=bank_transfer.reconciler_health.unhealthy
           reconciler=#{payment_method.preferred_reconciler}
           payment_method_id=#{payment_method.id}
           status=#{status}
@@ -81,19 +81,19 @@ module Spree
           last_success_at=#{state.last_successful_run_at&.iso8601 || 'never'}
         LINE
 
-        publish('bank_payments.reconciler.unhealthy')
+        publish('bank_transfer.reconciler_health.unhealthy')
       end
 
       def emit_recovered
         Rails.logger.info(<<~LINE.squish)
           [spree-bank_payments] reconciler recovered
-          event=bank_payments.reconciler.recovered
+          event=bank_transfer.reconciler_health.recovered
           reconciler=#{payment_method.preferred_reconciler}
           payment_method_id=#{payment_method.id}
           previous_status=#{previous}
         LINE
 
-        publish('bank_payments.reconciler.recovered')
+        publish('bank_transfer.reconciler_health.recovered')
       end
 
       # Serializable primitives only: subscribers run async through ActiveJob
