@@ -13,6 +13,22 @@ bin/rails spree_bank_payments:install:migrations
 bin/rails db:migrate
 ```
 
+**Run the migration before or with the deploy, never after.** `Gateway#health`
+reads `reconciler_state.health_status`, and it is now on the checkout path.
+In a rolling deploy, any pod running 5.3.0 against the 5.2.0 schema raises
+`NoMethodError` on `health_status` for every non-Manual gateway — a checkout
+500 for the whole window between the code going out and the migration landing.
+The columns are additive and nullable, so 5.2.0 pods are perfectly happy
+against the 5.3.0 schema; migrate first and the window does not exist.
+
+**A revoked consent means unpaid orders stop expiring.** `ExpireSessionsJob`
+gates on `reconciler_healthy?` and refuses to cancel while it cannot see the
+bank, which is correct — cancelling orders customers have already paid for is
+the worse failure. But `:consent_revoked` is by definition a state that never
+resolves on its own, so from the moment it is reported, unpaid orders and the
+stock they reserve accumulate until a human re-authorises the provider. Alert
+on `reason="consent_revoked"` and treat it as a page, not a ticket.
+
 ### Added
 
 **Three-state reconciler health.** `Reconcilers::Base#health` returns `:ok`,
