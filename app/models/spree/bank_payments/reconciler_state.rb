@@ -21,6 +21,16 @@ module Spree
       def record_failure!(error)
         update!(last_error: error.to_s.truncate(1000), consecutive_failures: consecutive_failures + 1)
       end
+
+      # @param status [Symbol] a member of Reconcilers::Base::HEALTH_STATES
+      # @param reason [Symbol] a member of HealthReporter::REASONS
+      # @param logged [Boolean] whether this report was actually emitted
+      def record_health!(status:, reason:, logged:)
+        attrs = { health_status: status.to_s, health_reason: reason.to_s }
+        attrs[:health_reported_at] = Time.current if logged
+
+        update!(attrs)
+      end
     end
   end
 end

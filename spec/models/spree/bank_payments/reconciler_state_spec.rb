@@ -73,4 +73,29 @@ RSpec.describe Spree::BankPayments::ReconcilerState do
       expect(reconciler_state.last_error).to eq('connection refused')
     end
   end
+
+  describe '#record_health!' do
+    let(:payment_method) { create(:bank_transfer_gateway) }
+    let(:state) { payment_method.reconciler_state }
+
+    it 'stores the status and reason as strings' do
+      state.record_health!(status: :consent_revoked, reason: :credentials_invalid, logged: true)
+
+      expect(state.reload.health_status).to eq('consent_revoked')
+      expect(state.health_reason).to eq('credentials_invalid')
+    end
+
+    # health_reported_at means "when we last LOGGED this", not "when we last
+    # observed it" -- the hourly re-log window is measured from it. Bumping it
+    # on every silent observation would push the next re-log out forever and a
+    # sustained outage would be logged exactly once.
+    it 'only advances health_reported_at when the report was logged' do
+      state.record_health!(status: :transient, reason: :provider_error, logged: true)
+      first = state.reload.health_reported_at
+
+      state.record_health!(status: :transient, reason: :provider_error, logged: false)
+
+      expect(state.reload.health_reported_at).to eq(first)
+    end
+  end
 end
