@@ -122,9 +122,18 @@ module Spree
 
       # Gate on both the reconciler's own opinion and our recorded poll history.
       # The Manual reconciler is always healthy because it never polls.
+      #
+      # An unbuildable reconciler is unhealthy rather than an exception. Two
+      # callers make that matter: ExpireSessionsJob, which must not cancel
+      # anything while we cannot see the bank, and the payment method's
+      # configuration-guide partial, which Spree renders on the **edit form** --
+      # so raising here locked an admin out of the one screen where an
+      # uninstalled provider gem can be switched back to 'manual'.
       def reconciler_healthy?
-        return false unless reconciler.healthy?
-        return true if reconciler.instance_of?(Reconcilers::Manual)
+        built = safely_built_reconciler
+        return false if built.nil?
+        return false unless built.healthy?
+        return true if built.instance_of?(Reconcilers::Manual)
 
         reconciler_state.healthy?(preferred_poll_interval_minutes)
       end
@@ -266,9 +275,17 @@ module Spree
       # did before this release. Withdrawing checkout on a config typo would be
       # a new and much louder failure mode than the one being fixed.
       def manual_reconciler?
-        reconciler.instance_of?(Reconcilers::Manual)
+        safely_built_reconciler.instance_of?(Reconcilers::Manual)
+      end
+
+      # The rescue is deliberately tight around the build itself, and catches
+      # only ArgumentError -- the one Reconcilers::Base.build raises for an
+      # unregistered key. A provider's own constructor blowing up is a bug that
+      # should still surface, not something to fold into "unhealthy".
+      def safely_built_reconciler
+        reconciler
       rescue ArgumentError
-        false
+        nil
       end
 
       # Catch the typo where it is made, rather than at the next poll. Skipped
@@ -277,6 +294,12 @@ module Spree
       # gateway -- deactivating it, or switching it back to 'manual', is the
       # recovery, and a validation that refused every save would lock the one
       # record they need to fix.
+      #
+      # Saving is only half of that recovery: the admin also has to be able to
+      # *open* the edit form, whose configuration-guide partial calls
+      # #reconciler_healthy?. That is why that method tolerates an unbuildable
+      # reconciler too -- without it this escape hatch would let an admin save a
+      # screen they could never reach.
       def reconciler_registered
         key = preferred_reconciler.to_s
         return if Reconcilers::Base.registry.key?(key)
