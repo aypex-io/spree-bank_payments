@@ -23,9 +23,23 @@ module Spree
         # silently withdraw bank transfer from the storefront.
         raise EmptyResponseError, 'provider reported no accounts' if reported.empty? && existing.any?
 
-        usable, unusable = reported.partition { |a| usable?(a) }
+        # A report with no provider id cannot be reconciled against anything.
+        # `index_by(&:provider_account_id)` collapses every hand-created
+        # account under the key nil, so a blank-id report classified as an
+        # :update would `find_by(provider_account_id: nil)` and overwrite an
+        # arbitrary manual account's currency and details. With no manual rows
+        # it would instead be created fresh on every single sync -- the unique
+        # index is partial on `provider_account_id IS NOT NULL`, so nothing
+        # stops the duplicates accumulating. Neither outcome is recoverable
+        # by the admin, so route these to :skipped where they are at least
+        # visible.
+        identified, unidentified = reported.partition { |a| a.provider_account_id.to_s.strip.present? }
 
-        by_id = existing.index_by(&:provider_account_id)
+        usable, unusable = identified.partition { |a| usable?(a) }
+
+        # Only rows carrying an id participate in matching, for the same
+        # reason: a nil key here would match nothing useful.
+        by_id = existing.select { |a| a.provider_account_id.present? }.index_by(&:provider_account_id)
 
         # A soft-deleted account is an admin's deliberate decision to
         # withdraw it (see MigrateLegacyAccounts), not an absence for sync to
@@ -46,7 +60,7 @@ module Spree
           create: usable.reject { |a| by_id.key?(a.provider_account_id) },
           update: usable.select { |a| by_id.key?(a.provider_account_id) },
           deactivate: existing.select { |a| a.provider_account_id.present? && seen.exclude?(a.provider_account_id) },
-          skipped: unusable + resurrections
+          skipped: unusable + resurrections + unidentified
         }
       end
 

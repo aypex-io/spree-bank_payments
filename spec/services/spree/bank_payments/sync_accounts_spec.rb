@@ -171,4 +171,63 @@ RSpec.describe Spree::BankPayments::SyncAccounts do
     expect(live.reload).to be_active
     expect(live).to be_offered
   end
+
+  # I3. `index_by(&:provider_account_id)` collapses every hand-created account
+  # under the key nil. A report with a blank id was therefore classified
+  # :update, and `find_by(provider_account_id: nil)` then picked an arbitrary
+  # manual row and overwrote its currency and details. With no manual rows it
+  # was created fresh on every sync instead, since the unique index is partial
+  # on `provider_account_id IS NOT NULL` -- duplicates accumulating forever.
+  describe 'a report with no provider account id' do
+    def blank_id_data(id)
+      Spree::BankPayments::AccountData.new(
+        provider_account_id: id, currency: 'EUR',
+        details: [{ 'label' => 'Rogue', 'fields' => [{ 'label' => 'IBAN', 'value' => 'DE00ROGUE' }] }]
+      )
+    end
+
+    [nil, '', '   '].each do |blank|
+      it "routes #{blank.inspect} to :skipped, never :create or :update" do
+        stub_sync([blank_id_data(blank)])
+
+        plan = described_class.new(payment_method: gateway).plan
+
+        expect(plan[:skipped].map(&:provider_account_id)).to eq([blank])
+        expect(plan[:create]).to be_empty
+        expect(plan[:update]).to be_empty
+      end
+    end
+
+    it 'does not overwrite a hand-created account' do
+      manual = create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP', offered: true,
+                                                   provider_account_id: nil)
+      stub_sync([blank_id_data(nil)])
+
+      described_class.new(payment_method: gateway).apply!
+
+      manual.reload
+      expect(manual.currency).to eq('GBP')
+      expect(manual.detail_sets.first.label).to eq('UK payments')
+    end
+
+    it 'does not accumulate a duplicate row on every sync' do
+      stub_sync([blank_id_data(nil)])
+
+      2.times { described_class.new(payment_method: gateway).apply! }
+
+      expect(gateway.bank_accounts.count).to eq(0)
+    end
+
+    # A hand-created account has no provider id, so sync must never read its
+    # absence from the provider's report as "deactivate it".
+    it 'leaves a hand-created account active' do
+      manual = create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP',
+                                                   provider_account_id: nil)
+      stub_sync([account_data('acc-1')])
+
+      described_class.new(payment_method: gateway).apply!
+
+      expect(manual.reload).to be_active
+    end
+  end
 end
