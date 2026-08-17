@@ -106,6 +106,18 @@ The matcher lives in core, so the flag must too:
 reference match. Amount-plus-currency agreement is not sufficient and routes
 to the manual queue instead.
 
+**Amended 2026-08-17, during planning.** This rule is already enforced, and
+universally: `IngestTransfer#matching_session` returns `nil` on a blank
+`reference_normalized` and looks sessions up by exact `external_id_normalized`.
+No amount-only auto-apply path exists for any account, pooled or not.
+
+So `pooled` adds no matcher behaviour. Its value is that an admin can see the
+account is pooled and understand why the reference matters when hand-matching,
+plus a regression spec that locks the invariant — so that a later fuzzy or
+amount-only fallback fails loudly instead of silently crediting the wrong payer
+on shared coordinates. The plan implements it that way rather than adding a
+rule that would be a no-op.
+
 ---
 
 ## Part B — `spree-bank_payments-revolut`
