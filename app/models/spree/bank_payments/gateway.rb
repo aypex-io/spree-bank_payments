@@ -15,6 +15,7 @@ module Spree
 
       validate :discount_percent_within_bounds
       validate :expiry_days_positive
+      validate :reconciler_registered
 
       has_many :bank_accounts,
                class_name: 'Spree::BankPayments::BankAccount',
@@ -127,7 +128,7 @@ module Spree
       # background worker where a live check is fine, and changing it here would
       # alter behaviour this task has no reason to touch.
       def health
-        return :ok if reconciler.instance_of?(Reconcilers::Manual)
+        return :ok if manual_reconciler?
 
         persisted = reconciler_state.health_status.presence&.to_sym
         return :consent_revoked if persisted == :consent_revoked
@@ -226,6 +227,44 @@ module Spree
       end
 
       private
+
+      # #health is reached from available_for_order?, which runs on every
+      # checkout render for every customer. Reconcilers::Base.build raises for
+      # a key that is not in the registry -- a typo'd preference, or a provider
+      # gem uninstalled while a gateway still names it -- and before 5.3.0 that
+      # only ever surfaced inside PollJob and ExpireSessionsJob, both of which
+      # rescue per payment method. Letting it escape here would turn a config
+      # mistake into a storefront 500.
+      #
+      # An unbuildable reconciler is therefore simply "not the Manual one", so
+      # #health falls through to the persisted state and reads :transient for a
+      # gateway that has never polled: the payment method keeps being offered
+      # and nothing reconciles, which is exactly what a misconfigured gateway
+      # did before this release. Withdrawing checkout on a config typo would be
+      # a new and much louder failure mode than the one being fixed.
+      def manual_reconciler?
+        reconciler.instance_of?(Reconcilers::Manual)
+      rescue ArgumentError
+        false
+      end
+
+      # Catch the typo where it is made, rather than at the next poll. Skipped
+      # when the value is unchanged on an already-persisted record: if a
+      # provider gem is uninstalled, an admin still has to be able to save this
+      # gateway -- deactivating it, or switching it back to 'manual', is the
+      # recovery, and a validation that refused every save would lock the one
+      # record they need to fix.
+      def reconciler_registered
+        key = preferred_reconciler.to_s
+        return if Reconcilers::Base.registry.key?(key)
+        return if persisted? && persisted_reconciler_key == key
+
+        errors.add(:preferred_reconciler, :inclusion)
+      end
+
+      def persisted_reconciler_key
+        (preferences_in_database || {}).with_indifferent_access[:reconciler].to_s
+      end
 
       def discount_percent_within_bounds
         percent = preferred_discount_percent.to_d

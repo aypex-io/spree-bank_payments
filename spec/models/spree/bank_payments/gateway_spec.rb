@@ -17,6 +17,26 @@ RSpec.describe Spree::BankPayments::Gateway do
     expect(gateway).not_to be_valid
   end
 
+  it 'rejects a reconciler that is not in the registry' do
+    gateway.preferred_reconciler = 'no_such_provider'
+
+    expect(gateway).not_to be_valid
+    expect(gateway.errors[:preferred_reconciler]).to be_present
+  end
+
+  # An admin whose provider gem has been uninstalled still has to be able to
+  # save this record -- deactivating it, or switching it back to 'manual', is
+  # the recovery.
+  it 'still saves a persisted gateway whose unregistered reconciler is unchanged' do
+    gateway.preferred_reconciler = 'a_provider_gem_that_was_uninstalled'
+    gateway.save!(validate: false)
+    gateway.reload
+
+    gateway.active = false
+
+    expect(gateway).to be_valid
+  end
+
   it 'lazily creates its reconciler state' do
     expect { gateway.reconciler_state }.to change(Spree::BankPayments::ReconcilerState, :count).by(1)
   end

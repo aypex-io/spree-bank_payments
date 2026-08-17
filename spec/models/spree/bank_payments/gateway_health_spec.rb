@@ -92,6 +92,41 @@ RSpec.describe Spree::BankPayments::Gateway do
       end
     end
 
+    # Before 5.3.0 nothing on the checkout path touched the reconciler, so a
+    # gateway naming a reconciler that is not in the registry -- a typo, or a
+    # provider gem uninstalled while a gateway still names it -- failed only in
+    # PollJob and ExpireSessionsJob, both of which rescue per payment method.
+    # #health made Reconcilers::Base.build reachable from available_for_order?,
+    # which runs on every checkout render for every customer.
+    context 'with a reconciler that is not in the registry' do
+      before do
+        payment_method.preferred_reconciler = 'a_provider_gem_that_was_uninstalled'
+        payment_method.save!(validate: false)
+        payment_method.reload
+      end
+
+      it 'does not raise from #health' do
+        expect { payment_method.health }.not_to raise_error
+      end
+
+      it 'does not raise from available_for_order?, so checkout still renders' do
+        expect { payment_method.available_for_order?(order) }.not_to raise_error
+      end
+
+      # Unchanged from the pre-5.3.0 behaviour: a misconfigured gateway kept
+      # offering bank transfer and simply never reconciled. Withdrawing it here
+      # would be a new, silent behaviour change triggered by a config typo.
+      it 'keeps offering at checkout rather than withdrawing on a config error' do
+        expect(payment_method.available_for_order?(order)).to be(true)
+      end
+
+      it 'still honours a persisted consent_revoked' do
+        payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+
+        expect(payment_method.health).to eq(:consent_revoked)
+      end
+    end
+
     context 'with the Manual reconciler' do
       it 'is always :ok, which never talks to anything' do
         expect(payment_method.health).to eq(:ok)
