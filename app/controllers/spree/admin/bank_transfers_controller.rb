@@ -14,8 +14,14 @@ module Spree
       before_action :load_recordable_payment_methods, only: %i[new create]
 
       def index
+        # includes(:bank_account) because the view asks every row whether its
+        # account is pooled. The association is declared `-> { with_deleted }`,
+        # which preloads fine, and it must stay that way: a soft-deleted
+        # account would otherwise resolve to nil and silently drop the pooled
+        # warning on exactly the rows still quoting its coordinates.
         @pagy, @transfers = pagy(
-          Spree::BankPayments::IncomingTransfer.unmatched.order(occurred_at: :desc)
+          Spree::BankPayments::IncomingTransfer.unmatched.
+            includes(:bank_account).order(occurred_at: :desc)
         )
 
         @suggestions = @transfers.each_with_object({}) do |transfer, acc|

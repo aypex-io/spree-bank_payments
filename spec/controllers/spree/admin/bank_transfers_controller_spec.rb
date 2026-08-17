@@ -66,6 +66,23 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
         expect(response.body).to include('Pooled account.')
       end
 
+      # The index preloads :bank_account to kill the per-row query the pooled
+      # check would otherwise cost. That association is scoped
+      # `-> { with_deleted }`, and if preloading were to lose that scope a
+      # soft-deleted account would resolve to nil -- silently dropping the
+      # warning on exactly the rows still quoting its shared coordinates.
+      it 'still warns when the pooled account has since been soft-deleted' do
+        bank_account.update!(pooled: true)
+        transfer.update!(bank_account: bank_account)
+        bank_account.destroy
+        session_record
+        request.headers['Turbo-Frame'] = 'bank-transfers'
+
+        get :index
+
+        expect(response.body).to include('Pooled account.')
+      end
+
       it 'stays quiet for a transfer on a dedicated account' do
         transfer.update!(bank_account: bank_account)
         session_record
