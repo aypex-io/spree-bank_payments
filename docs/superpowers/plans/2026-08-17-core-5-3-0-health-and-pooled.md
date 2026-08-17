@@ -315,6 +315,15 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `ReconcilerState#record_health!` from Task 2.
 - Produces: `HealthReporter::REASONS`; `HealthReporter.call(payment_method:, status:, reason:) -> Boolean` (true when it logged).
 
+> **Event names here were updated during the pre-merge review.** This plan was
+> written against `bank_payments.reconciler.unhealthy` / `.recovered`; the
+> whole-branch review renamed them to
+> `bank_transfer.reconciler_health.unhealthy` / `.recovered` before merge, so
+> that the `Spree::Events.subscribe('bank_transfer.*', …)` wildcard the README
+> documents actually catches them. The names below — in both the `publish(…)`
+> calls and the `event=` key inside the log lines, since alert rules key on the
+> log — are what shipped.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `spec/services/spree/bank_payments/health_reporter_spec.rb`:
@@ -334,7 +343,7 @@ RSpec.describe Spree::BankPayments::HealthReporter do
 
   it 'logs a transition into an unhealthy state at WARN' do
     expect(report(:transient, :provider_error)).to be(true)
-    expect(logger).to have_received(:warn).with(/event=bank_payments\.reconciler\.unhealthy/)
+    expect(logger).to have_received(:warn).with(/event=bank_transfer\.reconciler_health\.unhealthy/)
   end
 
   it 'logs a revoked consent at ERROR, because it needs a human not a retry' do
@@ -362,8 +371,8 @@ RSpec.describe Spree::BankPayments::HealthReporter do
     allow(Spree::Events).to receive(:publish)
 
     expect(report(:ok, :ok)).to be(true)
-    expect(logger).to have_received(:info).with(/event=bank_payments\.reconciler\.recovered/)
-    expect(Spree::Events).to have_received(:publish).with('bank_payments.reconciler.recovered', hash_including(payment_method_id: payment_method.id))
+    expect(logger).to have_received(:info).with(/event=bank_transfer\.reconciler_health\.recovered/)
+    expect(Spree::Events).to have_received(:publish).with('bank_transfer.reconciler_health.recovered', hash_including(payment_method_id: payment_method.id))
   end
 
   it 'stays silent while healthy' do
@@ -471,7 +480,7 @@ module Spree
 
         Rails.logger.public_send(severity, <<~LINE.squish)
           [spree-bank_payments] reconciler unhealthy
-          event=bank_payments.reconciler.unhealthy
+          event=bank_transfer.reconciler_health.unhealthy
           reconciler=#{payment_method.preferred_reconciler}
           payment_method_id=#{payment_method.id}
           status=#{status}
@@ -480,19 +489,19 @@ module Spree
           last_success_at=#{state.last_successful_run_at&.iso8601 || 'never'}
         LINE
 
-        publish('bank_payments.reconciler.unhealthy')
+        publish('bank_transfer.reconciler_health.unhealthy')
       end
 
       def emit_recovered
         Rails.logger.info(<<~LINE.squish)
           [spree-bank_payments] reconciler recovered
-          event=bank_payments.reconciler.recovered
+          event=bank_transfer.reconciler_health.recovered
           reconciler=#{payment_method.preferred_reconciler}
           payment_method_id=#{payment_method.id}
           previous_status=#{previous}
         LINE
 
-        publish('bank_payments.reconciler.recovered')
+        publish('bank_transfer.reconciler_health.recovered')
       end
 
       # Serializable primitives only: subscribers run async through ActiveJob
@@ -1073,8 +1082,12 @@ overriding only `#health` gets `#healthy?` derived in turn.
 **Health transition logging, owned by core.** Logged on transition and at most
 hourly thereafter, with a stable `event=` key so alert rules never depend on
 prose. `:transient` logs WARN, `:consent_revoked` logs ERROR, recovery logs INFO.
-`bank_payments.reconciler.unhealthy` and `.recovered` are also published through
-`Spree::Events`.
+`bank_transfer.reconciler_health.unhealthy` and `.recovered` are also published through
+`Spree::Events`. (These carried a `bank_payments.reconciler.*` prefix when this
+plan was written; renamed before merge so the documented `bank_transfer.*`
+wildcard catches them. The shipped CHANGELOG says a little more than this
+excerpt, including that they are distinct from the flat
+`bank_transfer.reconciler_unhealthy` `ExpireSessionsJob` publishes.)
 
 The `reason` is drawn from a closed enum and unrecognised values collapse to
 `unknown`. It is never built from an exception message or a response body.
@@ -1091,7 +1104,7 @@ now locks that invariant explicitly.
 In the reconciler-contract section of `README.md`, document `#health`, the three states, which of them withdraws from checkout, and that overriding either `#health` or `#healthy?` is sufficient. Add the LogQL example:
 
 ```logql
-{namespace=~"your-ns-.*"} |= "bank_payments.reconciler.unhealthy" | logfmt
+{namespace=~"your-ns-.*"} |= "bank_transfer.reconciler_health.unhealthy" | logfmt
 ```
 
 noting that `reason="consent_revoked"` warrants an immediate page while anything else should only alert after roughly thirty minutes sustained.
