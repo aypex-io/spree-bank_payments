@@ -57,4 +57,13 @@ RSpec.describe Spree::BankPayments::HealthReporter do
     expect(logger).to have_received(:warn).with(/reason=unknown/)
     expect(logger).not_to have_received(:warn).with(/hunter2/)
   end
+
+  # An unclamped status was persisted verbatim into health_status, which
+  # Gateway#health then reads on the checkout path.
+  it 'clamps a status outside HEALTH_STATES to :transient' do
+    report(:wildly_confused, :provider_error)
+
+    expect(logger).to have_received(:warn).with(/status=transient/)
+    expect(payment_method.reconciler_state.reload.health_status).to eq('transient')
+  end
 end

@@ -26,8 +26,8 @@ module Spree
 
       def initialize(payment_method:, status:, reason:)
         @payment_method = payment_method
-        @status = status.to_sym
-        @reason = REASONS.include?(reason.to_s.to_sym) ? reason.to_s.to_sym : :unknown
+        @status = clamp(status.to_s.to_sym, Reconcilers::Base::HEALTH_STATES, :transient)
+        @reason = clamp(reason.to_s.to_sym, REASONS, :unknown)
       end
 
       def call
@@ -40,6 +40,17 @@ module Spree
       private
 
       attr_reader :payment_method, :status, :reason
+
+      # `reason` was already clamped; `status` was not, so an unrecognised one
+      # fell through the severity ternary to WARN and was persisted verbatim
+      # into health_status -- where Gateway#health then reads it. :transient is
+      # the fallback because it preserves that de-facto WARN severity while
+      # keeping the persisted value inside HEALTH_STATES. :ok would claim a
+      # health we have no evidence for, and :consent_revoked would withdraw the
+      # payment method from checkout on nothing more than a typo.
+      def clamp(value, permitted, fallback)
+        permitted.include?(value) ? value : fallback
+      end
 
       def state
         @state ||= payment_method.reconciler_state

@@ -25,7 +25,7 @@ module Spree
         end
 
         state.record_success!
-        HealthReporter.call(payment_method: payment_method, status: :ok, reason: :ok)
+        report_health(payment_method, :ok, :ok)
       rescue StandardError => e
         # Never re-raise: one misconfigured payment method must not stop the
         # others, and the recorded failure is what flips the health gate.
@@ -51,6 +51,22 @@ module Spree
 
         reason = status == :consent_revoked ? :consent_revoked : :provider_error
 
+        report_health(payment_method, status, reason)
+      rescue StandardError => e
+        Rails.error.report(e, source: 'spree_bank_payments.health')
+      end
+
+      # Reporting health is bookkeeping about the poll, not part of it. On the
+      # success path the call sits inside poll_one's rescue region, so a
+      # reporter that raised -- a logger blowing up, an event subscriber
+      # exploding -- would have recorded a failure for a poll that fully
+      # succeeded, and then reported health a second time from report_failure.
+      #
+      # An `else` clause on poll_one would move the call out of the rescue
+      # region, but then the exception escapes poll_one entirely and aborts the
+      # find_each over every remaining payment method. Its own rescue is what
+      # contains it, mirroring what report_failure already does.
+      def report_health(payment_method, status, reason)
         HealthReporter.call(payment_method: payment_method, status: status, reason: reason)
       rescue StandardError => e
         Rails.error.report(e, source: 'spree_bank_payments.health')

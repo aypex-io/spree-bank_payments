@@ -155,5 +155,31 @@ RSpec.describe Spree::BankPayments::PollJob do
       expect { described_class.perform_now }.not_to raise_error
       expect(other.reconciler_state.reload.consecutive_failures).to eq(1)
     end
+
+    # The success-path HealthReporter.call sits inside poll_one's rescue
+    # region. Without its own rescue, a reporter that blew up would have the
+    # poll recorded as a failure -- and reported unhealthy -- despite having
+    # fully succeeded, including ingesting every transfer it found.
+    it 'does not mark a fully successful poll as failed when reporting health raises' do
+      allow(Spree::BankPayments::HealthReporter).
+        to receive(:call).and_raise(StandardError, 'logger exploded')
+
+      expect { described_class.perform_now }.not_to raise_error
+
+      state = payment_method.reconciler_state.reload
+      expect(state.consecutive_failures).to eq(0)
+      expect(state.last_successful_run_at).to be_present
+      expect(state.last_error).to be_nil
+    end
+
+    it 'keeps polling the remaining payment methods when reporting health raises' do
+      other = create(:bank_transfer_gateway)
+      allow(Spree::BankPayments::HealthReporter).
+        to receive(:call).and_raise(StandardError, 'logger exploded')
+
+      described_class.perform_now
+
+      expect(other.reconciler_state.reload.last_successful_run_at).to be_present
+    end
   end
 end
