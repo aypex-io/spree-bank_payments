@@ -50,6 +50,31 @@ RSpec.describe Spree::Admin::BankTransfersController, type: :controller do
         expect(response.body).to include(order.number)
         expect(response.body).to include('WRONG')
       end
+
+      # Suggestions are ranked partly on fuzzy pg_trgm payer-name similarity.
+      # On a pooled account every customer of the provider sends to the same
+      # coordinates, so a plausible name is not evidence of who paid -- and
+      # this queue is exactly where an admin credits the wrong one.
+      it 'warns that the account is pooled when the transfer landed on one' do
+        bank_account.update!(pooled: true)
+        transfer.update!(bank_account: bank_account)
+        session_record
+        request.headers['Turbo-Frame'] = 'bank-transfers'
+
+        get :index
+
+        expect(response.body).to include('Pooled account.')
+      end
+
+      it 'stays quiet for a transfer on a dedicated account' do
+        transfer.update!(bank_account: bank_account)
+        session_record
+        request.headers['Turbo-Frame'] = 'bank-transfers'
+
+        get :index
+
+        expect(response.body).not_to include('Pooled account.')
+      end
     end
   end
 

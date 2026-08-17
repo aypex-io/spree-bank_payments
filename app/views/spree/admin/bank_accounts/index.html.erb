@@ -35,7 +35,12 @@
 
 <table class="table">
   <thead>
-    <tr><th>Currency</th><th>Account</th><th>Source</th><th>Offered</th><th>Active</th><th></th></tr>
+    <%# `Pooled` is a provider-reported fact, not an admin choice, so it renders
+        as a plain cell like `Active` rather than a toggle. It is shown because
+        it changes how a human must read the hand-match queue: on a pooled
+        account the coordinates are shared with other customers of the
+        provider, so the reference is the only thing identifying the payer. %>
+    <tr><th>Currency</th><th>Account</th><th>Source</th><th>Offered</th><th>Active</th><th>Pooled</th><th></th></tr>
   </thead>
   <tbody>
     <% @bank_accounts.each do |account| %>
@@ -55,6 +60,14 @@
                         class: account.offered? ? 'btn btn-sm btn-success' : 'btn btn-sm btn-outline-secondary' %>
         </td>
         <td><%= account.active? ? 'Yes' : 'No' %></td>
+        <td>
+          <% if account.pooled? %>
+            <span class="badge bg-warning text-dark"
+                  title="These coordinates are shared with other customers of the provider. The payment reference is the only thing identifying the payer.">Pooled</span>
+          <% else %>
+            No
+          <% end %>
+        </td>
         <td>
           <% unless account.synced? %>
             <%= link_to 'Edit', spree.edit_admin_payment_method_bank_account_path(@payment_method, account) %>

@@ -34,6 +34,33 @@ RSpec.describe Spree::Admin::BankAccountsController, type: :controller do
       expect(warning).to include('EUR')
       expect(warning).not_to include('GBP')
     end
+
+    # An admin has to be able to see that an account is pooled: it is what
+    # tells them the reference is the only thing identifying a payer when
+    # hand-matching.
+    it 'badges a pooled account' do
+      create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP',
+                                          offered: true, pooled: true, provider_account_id: 'pool')
+
+      request.headers['Turbo-Frame'] = 'bank-accounts'
+
+      get :index, params: { payment_method_id: gateway.id }
+
+      expect(response.body).to match(/badge[^>]*>\s*Pooled/m)
+    end
+
+    # The column header says "Pooled" on every render, so the assertion has to
+    # be on the badge, not the word.
+    it 'does not badge a dedicated account' do
+      create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP',
+                                          offered: true, provider_account_id: 'dedicated')
+
+      request.headers['Turbo-Frame'] = 'bank-accounts'
+
+      get :index, params: { payment_method_id: gateway.id }
+
+      expect(response.body).not_to match(/badge[^>]*>\s*Pooled/m)
+    end
   end
 
   it 'offers an account and unoffers the previous one for that currency' do

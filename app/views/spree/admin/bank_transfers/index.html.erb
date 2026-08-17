@@ -23,6 +23,22 @@
           <td><%= transfer.payer_name %></td>
           <td><code><%= transfer.reference_raw.presence || '—' %></code></td>
           <td>
+            <%# Suggestions are ranked partly on fuzzy pg_trgm payer-name
+                similarity, so a plausible-looking name is not evidence of who
+                paid. On a pooled account it is not evidence at all: every
+                customer of the provider sends to the same coordinates, so two
+                unrelated payers land here indistinguishable except by the
+                reference they quoted. Say so on the screen where the admin is
+                about to click, not only on the accounts screen. %>
+            <% if transfer.bank_account&.pooled? %>
+              <div class="alert alert-warning py-1 px-2 mb-2">
+                <strong>Pooled account.</strong> These coordinates are shared
+                with other customers of the provider, so the reference is the
+                only thing identifying who paid. Check the reference above
+                against the order before applying — a suggestion here is a
+                guess, not a match.
+              </div>
+            <% end %>
             <% Array(@suggestions[transfer.id]).each do |suggestion| %>
               <%# Currency compared case-insensitively, matching the controller's
                   own casecmp guard -- otherwise 'gbp' vs 'GBP' (the same

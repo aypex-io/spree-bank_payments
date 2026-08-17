@@ -99,6 +99,18 @@ every order regardless of currency.
   `sync_accounts` raises, times out, or returns an empty array while
   accounts already exist, the whole sync aborts with no writes — an auth
   failure must never be read as "every account disappeared."
+- **`pooled` marks an account whose coordinates are shared.** Some providers
+  hand every customer the same IBAN and separate the payers by reference
+  alone. A provider reports this through `AccountData#pooled` (default
+  `false`, so a provider that never sets it behaves exactly as before) and
+  it is shown as a **Pooled** badge on the bank accounts screen. It changes
+  nothing about auto-apply — that has always required an exact normalized
+  reference match, on every account — but it changes how a human must read
+  the unmatched queue. Suggestions there are ranked partly on fuzzy
+  payer-name similarity, and on a pooled account a plausible name is not
+  evidence of who paid: two unrelated customers arrive on identical
+  coordinates. The queue therefore warns when a transfer landed on a pooled
+  account, and the reference is the thing to verify before applying.
 
 ### Writing a provider's `sync_accounts`
 
