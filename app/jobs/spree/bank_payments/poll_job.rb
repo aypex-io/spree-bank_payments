@@ -25,6 +25,7 @@ module Spree
         end
 
         state.record_success!
+        HealthReporter.call(payment_method: payment_method, status: :ok, reason: :ok)
       rescue StandardError => e
         # Never re-raise: one misconfigured payment method must not stop the
         # others, and the recorded failure is what flips the health gate.
@@ -33,6 +34,23 @@ module Spree
         # here can't escape and wedge every payment method after this one.
         state&.record_failure!(e.message)
         Rails.error.report(e, source: 'spree_bank_payments.poll')
+        report_failure(payment_method, e)
+      end
+
+      # Ask the reconciler what kind of failure this was. A provider that knows
+      # its consent is dead says :consent_revoked; anything that raises while
+      # answering is itself only transient evidence, so it degrades rather than
+      # escaping and skipping the remaining payment methods.
+      def report_failure(payment_method, error)
+        status = payment_method.reconciler.health
+        status = :transient unless Reconcilers::Base::HEALTH_STATES.include?(status)
+        status = :transient if status == :ok
+
+        reason = status == :consent_revoked ? :consent_revoked : :provider_error
+
+        HealthReporter.call(payment_method: payment_method, status: status, reason: reason)
+      rescue StandardError => e
+        Rails.error.report(e, source: 'spree_bank_payments.health')
       end
     end
   end

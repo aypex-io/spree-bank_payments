@@ -102,4 +102,41 @@ RSpec.describe Spree::BankPayments::PollJob do
     expect { described_class.perform_now }.
       to change(Spree::BankPayments::IncomingTransfer, :count).by(1)
   end
+
+  describe 'health reporting' do
+    let!(:payment_method) { create(:bank_transfer_gateway) }
+
+    it 'reports :ok after a successful poll' do
+      allow(Spree::BankPayments::HealthReporter).to receive(:call)
+
+      described_class.perform_now
+
+      expect(Spree::BankPayments::HealthReporter).to have_received(:call).
+        with(hash_including(status: :ok, reason: :ok))
+    end
+
+    # A provider that knows its consent is dead must be able to say so, rather
+    # than having every failure flattened to "transient" and retried forever.
+    it 'passes a reconciler-declared :consent_revoked straight through' do
+      allow_any_instance_of(Spree::BankPayments::Reconcilers::Manual).
+        to receive(:poll).and_raise(StandardError, 'nope')
+      allow_any_instance_of(Spree::BankPayments::Reconcilers::Manual).
+        to receive(:health).and_return(:consent_revoked)
+      allow(Spree::BankPayments::HealthReporter).to receive(:call)
+
+      described_class.perform_now
+
+      expect(Spree::BankPayments::HealthReporter).to have_received(:call).
+        with(hash_including(status: :consent_revoked))
+    end
+
+    it 'still polls the remaining payment methods when one reports unhealthy' do
+      other = create(:bank_transfer_gateway)
+      allow_any_instance_of(Spree::BankPayments::Reconcilers::Manual).
+        to receive(:poll).and_raise(StandardError, 'nope')
+
+      expect { described_class.perform_now }.not_to raise_error
+      expect(other.reconciler_state.reload.consecutive_failures).to eq(1)
+    end
+  end
 end
