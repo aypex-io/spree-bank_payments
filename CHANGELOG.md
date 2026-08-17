@@ -2,6 +2,45 @@
 
 All notable changes to this project are documented in this file.
 
+## 5.3.0
+
+### Upgrading from 5.2.0
+
+Adds columns, so this is not gem-bump-only:
+
+```sh
+bin/rails spree_bank_payments:install:migrations
+bin/rails db:migrate
+```
+
+### Added
+
+**Three-state reconciler health.** `Reconcilers::Base#health` returns `:ok`,
+`:transient` or `:consent_revoked`. A boolean could not separate a retryable
+provider outage from a dead authorisation, and the two need different responses:
+`:transient` keeps offering at checkout, because those transfers still arrive
+and reconcile once the provider returns, while `:consent_revoked` withdraws the
+payment method, because nothing will ever reconcile against it.
+
+**Backward compatible.** A reconciler written against 5.1.1 or 5.2.0, overriding
+only `#healthy?`, works unmodified — `#health` derives from it. A reconciler
+overriding only `#health` gets `#healthy?` derived in turn.
+
+**Health transition logging, owned by core.** Logged on transition and at most
+hourly thereafter, with a stable `event=` key so alert rules never depend on
+prose. `:transient` logs WARN, `:consent_revoked` logs ERROR, recovery logs INFO.
+`bank_payments.reconciler.unhealthy` and `.recovered` are also published through
+`Spree::Events`.
+
+The `reason` is drawn from a closed enum and unrecognised values collapse to
+`unknown`. It is never built from an exception message or a response body.
+
+**`pooled` on bank accounts.** Carried from `AccountData` through `SyncAccounts`.
+A pooled account shares its coordinates with other customers of the provider, so
+the payment reference is the only thing separating two payers. Auto-apply has
+always required an exact reference match; `spec/services/spree/bank_payments/pooled_account_matching_spec.rb`
+now locks that invariant explicitly.
+
 ## 5.2.0
 
 ### Upgrading from 5.1.1

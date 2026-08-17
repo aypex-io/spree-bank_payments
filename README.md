@@ -316,12 +316,51 @@ contract methods:
 
 - `#poll(since:)` — returns an `Array<Spree::BankPayments::TransferData>`
 - `#parse_webhook(raw_body, headers)` — returns `TransferData` or `nil`
-- `#healthy?` — boolean; feeds the health gate above
+- `#health` or `#healthy?` — see below; feeds the health gate above
 - `#configured?` — boolean; whether credentials/settings are complete
 
 `Base` also provides `#sync_accounts`, returning `[]` by default — override
 it if your provider can enumerate accounts, returning an
 `Array<Spree::BankPayments::AccountData>`.
+
+### `#health`
+
+Override either `#health` or `#healthy?` — never both, and never neither.
+Each derives from the other, so a reconciler written before 5.3.0 that only
+implements `#healthy?` keeps working unmodified, and a reconciler that only
+implements `#health` gets `#healthy?` derived from it. Overriding neither
+raises `NotImplementedError` rather than recursing.
+
+`#health` returns one of three symbols. A boolean cannot separate a retryable
+provider outage from a dead authorisation, and checkout has to treat them
+differently:
+
+| State | Meaning | Withdraws from checkout? |
+|---|---|---|
+| `:ok` | Reconciling normally | No |
+| `:transient` | A provider outage or similar — expected to recover on its own | No — those transfers still arrive and reconcile once the provider returns |
+| `:consent_revoked` | The authorisation is dead; nothing will ever reconcile against it | Yes |
+
+`Gateway#health` is the persisted view `available_for_order?` reads on every
+checkout render — it never calls the reconciler directly, so a provider's live
+check never lands on the storefront's critical path. `PollJob` is what
+refreshes it, reporting health after every poll through `HealthReporter`,
+which logs the transition and then at most hourly while the condition
+persists (WARN for `:transient`, ERROR for `:consent_revoked`, INFO on
+recovery) and publishes `bank_payments.reconciler.unhealthy` /
+`.recovered` through `Spree::Events`.
+
+Query the unhealthy log line with LogQL:
+
+```logql
+{namespace=~"your-ns-.*"} |= "bank_payments.reconciler.unhealthy" | logfmt
+```
+
+`reason="consent_revoked"` warrants an immediate page — nothing will
+reconcile until a human re-authorises it. Any other reason should only alert
+after roughly thirty minutes sustained, since a brief provider blip recovers
+on its own and paging on every transient hiccup trains people to ignore the
+alert.
 
 Register it:
 
