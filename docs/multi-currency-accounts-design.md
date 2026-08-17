@@ -81,7 +81,7 @@ is out of scope beyond the interface it must satisfy.
   IS NULL`** — at most one *live* offered account per currency, guaranteed by
   the database rather than a form validation. Both partial indexes exclude
   soft-deleted rows (added in
-  `db/migrate/20260817000005_exclude_soft_deleted_from_bank_account_uniqueness.rb`):
+  `db/migrate/20260817000003_exclude_soft_deleted_from_bank_account_uniqueness.rb`):
   without the `deleted_at IS NULL` clause, a soft-deleted row still satisfies
   the old predicate and blocks a live row from taking its place — reachable
   through the ordinary admin path (delete an offered account, then try to
