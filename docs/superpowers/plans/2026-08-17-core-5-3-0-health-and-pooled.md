@@ -228,10 +228,10 @@ Append to `spec/models/spree/bank_payments/reconciler_state_spec.rb`:
     let(:state) { payment_method.reconciler_state }
 
     it 'stores the status and reason as strings' do
-      state.record_health!(status: :consent_revoked, reason: :credentials_invalid, logged: true)
+      state.record_health!(status: :consent_revoked, reason: :consent_revoked, logged: true)
 
       expect(state.reload.health_status).to eq('consent_revoked')
-      expect(state.health_reason).to eq('credentials_invalid')
+      expect(state.health_reason).to eq('consent_revoked')
     end
 
     # health_reported_at means "when we last LOGGED this", not "when we last
@@ -347,9 +347,9 @@ RSpec.describe Spree::BankPayments::HealthReporter do
   end
 
   it 'logs a revoked consent at ERROR, because it needs a human not a retry' do
-    report(:consent_revoked, :credentials_invalid)
+    report(:consent_revoked, :consent_revoked)
 
-    expect(logger).to have_received(:error).with(/reason=credentials_invalid/)
+    expect(logger).to have_received(:error).with(/reason=consent_revoked/)
   end
 
   # A five-minute poll against a dead consent would otherwise write ~288
@@ -416,17 +416,14 @@ module Spree
       # A closed set. A provider hands us one of these symbols; anything else
       # becomes :unknown. Reasons are NEVER built from an exception message or
       # a response body -- that is how a bearer token reaches a log aggregator.
-      REASONS = %i[
-        ok
-        provider_unreachable
-        provider_error
-        rate_limited
-        not_configured
-        stale_polling
-        consent_revoked
-        credentials_invalid
-        unknown
-      ].freeze
+      #
+      # Trimmed from nine values to four by the pre-merge review: the other five
+      # (provider_unreachable, rate_limited, not_configured, stale_polling,
+      # credentials_invalid) had no producer and no provider-facing hook to
+      # become one. Widening a published enum later is non-breaking; narrowing
+      # it is not, so shipping only what core can emit was the cheap choice
+      # while nothing had shipped.
+      REASONS = %i[ok provider_error consent_revoked unknown].freeze
 
       def self.call(payment_method:, status:, reason:)
         new(payment_method: payment_method, status: status, reason: reason).call
@@ -624,14 +621,14 @@ Replace `poll_one` in `app/jobs/spree/bank_payments/poll_job.rb`:
         # here can't escape and wedge every payment method after this one.
         state&.record_failure!(e.message)
         Rails.error.report(e, source: 'spree_bank_payments.poll')
-        report_failure(payment_method, e)
+        report_failure(payment_method)
       end
 
       # Ask the reconciler what kind of failure this was. A provider that knows
       # its consent is dead says :consent_revoked; anything that raises while
       # answering is itself only transient evidence, so it degrades rather than
       # escaping and skipping the remaining payment methods.
-      def report_failure(payment_method, error)
+      def report_failure(payment_method)
         status = payment_method.reconciler.health
         status = :transient unless Reconcilers::Base::HEALTH_STATES.include?(status)
         status = :transient if status == :ok
@@ -643,6 +640,20 @@ Replace `poll_one` in `app/jobs/spree/bank_payments/poll_job.rb`:
         Rails.error.report(e, source: 'spree_bank_payments.health')
       end
 ```
+
+> **Two pre-merge review changes to this method are not shown above**, so that
+> this block stays readable as the Task 4 step it was. Both are in the shipped
+> `poll_job.rb`:
+>
+> - The unused `error` parameter was dropped (already reflected above), since it
+>   was the fossil of a reason-derivation feature the `REASONS` trim abandoned.
+> - `payment_method.reconciler.health` was wrapped in its own rescue, and the
+>   `HealthReporter.call` on both paths moved into a `report_health` helper with
+>   its own rescue. Without the first, an unregistered reconciler key raises out
+>   of `Reconcilers::Base.build` before `#health` is reached, the method-level
+>   rescue swallows it, and **no health is reported at all** — no event, no log
+>   line, no persisted `health_status`. Without the second, a reporter that
+>   raised on the success path recorded a fully successful poll as a failure.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
