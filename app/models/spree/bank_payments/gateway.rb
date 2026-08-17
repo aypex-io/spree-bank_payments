@@ -117,6 +117,24 @@ module Spree
         reconciler_state.healthy?(preferred_poll_interval_minutes)
       end
 
+      # The persisted view of health, safe to call on the checkout hot path.
+      #
+      # Deliberately does NOT call `reconciler.health`: available_for_order? runs
+      # on every checkout render, and a provider's live check is an HTTP request.
+      # The poll job is what refreshes this.
+      #
+      # #reconciler_healthy? is left alone -- it gates the expiry job from a
+      # background worker where a live check is fine, and changing it here would
+      # alter behaviour this task has no reason to touch.
+      def health
+        persisted = reconciler_state.health_status.presence&.to_sym
+        return :consent_revoked if persisted == :consent_revoked
+
+        return :ok if reconciler.instance_of?(Reconcilers::Manual)
+
+        reconciler_state.healthy?(preferred_poll_interval_minutes) ? :ok : :transient
+      end
+
       # Called by Spree::Api::V3::Webhooks::PaymentsController. Signature
       # verification happens inside the reconciler and raises
       # Spree::PaymentMethod::WebhookSignatureError, which the controller turns
@@ -155,6 +173,11 @@ module Spree
 
       def available_for_order?(order)
         return false unless super
+
+        # Nothing will ever reconcile against a dead consent, so quoting bank
+        # details would take money we cannot match to an order. :transient is
+        # deliberately not gated here.
+        return false if health == :consent_revoked
 
         return true if offered_account_for(order.currency).present?
 

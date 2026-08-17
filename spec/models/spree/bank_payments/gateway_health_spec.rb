@@ -42,4 +42,44 @@ RSpec.describe Spree::BankPayments::Gateway do
       end
     end
   end
+
+  describe '#health' do
+    let(:payment_method) { create(:bank_transfer_gateway) }
+    let(:order) { create(:order_with_line_items, currency: 'GBP') }
+
+    before { create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true) }
+
+    # available_for_order? runs on every checkout render. A network call here
+    # would put a bank's latency on the storefront's critical path, so this
+    # reads only what the poll job persisted.
+    it 'never asks the reconciler, so checkout cannot make a network call' do
+      expect(payment_method.reconciler).not_to receive(:health)
+
+      payment_method.health
+    end
+
+    it 'is :consent_revoked when that is what the poll job recorded' do
+      payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+
+      expect(payment_method.health).to eq(:consent_revoked)
+    end
+
+    it 'withdraws the payment method from checkout when consent is revoked' do
+      payment_method.reconciler_state.update!(health_status: 'consent_revoked')
+
+      expect(payment_method.available_for_order?(order)).to be(false)
+    end
+
+    # A brief provider outage must not pull bank transfer off the storefront:
+    # the transfers still arrive and reconcile once the provider returns.
+    it 'keeps offering at checkout while merely transient' do
+      payment_method.reconciler_state.update!(health_status: 'transient')
+
+      expect(payment_method.available_for_order?(order)).to be(true)
+    end
+
+    it 'is always :ok for the manual reconciler, which never talks to anything' do
+      expect(payment_method.health).to eq(:ok)
+    end
+  end
 end
