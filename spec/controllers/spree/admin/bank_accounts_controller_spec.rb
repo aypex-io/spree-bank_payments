@@ -244,4 +244,34 @@ RSpec.describe Spree::Admin::BankAccountsController, type: :controller do
       post :sync, params: { payment_method_id: gateway.id }
     end
   end
+
+  # `active` is sync's field, not the admin's: it records whether the provider
+  # still reports the account, and the form has no control for it. While it
+  # was permitted, a hand-crafted PUT could set active: false on the offered
+  # account, which removes that currency from checkout entirely
+  # (Gateway#offered_account_for scopes by `active`) with nothing in the UI to
+  # explain why and no way to undo it short of a re-sync.
+  it 'ignores an active flag submitted directly, so a currency cannot be silently withdrawn' do
+    account = create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP', offered: true)
+
+    put :update, params: { payment_method_id: gateway.id, id: account.id,
+                           bank_account: { active: 'false' } }
+
+    expect(account.reload).to be_active
+    expect(gateway.offered_account_for('GBP')).to eq(account)
+  end
+
+  # I2. Valid JSON of the wrong shape reaches the model, not the
+  # JSON::ParserError rescue -- it must still be a form error.
+  it 'turns a JSON object pasted where an array belongs into a form error, not a 500' do
+    expect {
+      post :create, params: {
+        payment_method_id: gateway.id,
+        bank_account: { currency: 'GBP', details: '{"label": "UK payments"}' }
+      }
+    }.not_to raise_error
+
+    expect(response).to render_template(:new)
+    expect(assigns(:bank_account).errors[:details]).to be_present
+  end
 end

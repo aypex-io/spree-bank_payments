@@ -108,8 +108,15 @@ module Spree
         redirect_to spree.admin_payment_method_bank_accounts_path(@payment_method)
       end
 
+      # `active` is deliberately NOT permitted. It is sync's field, not the
+      # admin's: it records whether the provider still reports the account,
+      # and the form offers no control for it. Permitting it meant a
+      # hand-crafted PUT could set `active: false` on the offered account,
+      # which withdraws that currency from checkout entirely
+      # (Gateway#offered_account_for scopes by `active`) until the next sync
+      # flips it back. The admin's lever is `offered` (toggle_offered).
       def raw_bank_account_params
-        params.require(:bank_account).permit(:currency, :offered, :active, :details)
+        params.require(:bank_account).permit(:currency, :offered, :details)
       end
 
       def synced_field_present?

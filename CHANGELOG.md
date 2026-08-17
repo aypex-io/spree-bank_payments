@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 ## 5.2.0
 
+### Upgrading from 5.1.1
+
+This release adds tables and columns, so the upgrade is not gem-bump-only.
+From the host app, after bumping the gem:
+
+```sh
+bin/rails spree_bank_payments:install:migrations
+bin/rails db:migrate
+```
+
+`db:migrate` runs the legacy preference migration described under
+"Legacy preference migration" below, which folds your existing `account_*`
+preferences into a `BankAccount` so the store keeps quoting exactly what it
+quoted before. Then read the BREAKING CHANGE below: any host code calling
+`Gateway#bank_details` needs a change.
+
 ### BREAKING CHANGE
 
 **`Gateway#bank_details` now returns `Array<Spree::BankPayments::DetailSet>`,
@@ -77,7 +93,7 @@ briefly:
   reported as skipped in the sync diff instead.
 
 **Legacy preference migration.** A data migration
-(`db/migrate/20260817000003_migrate_legacy_account_preferences.rb`) folds
+(`db/migrate/20260817000004_migrate_legacy_account_preferences.rb`) folds
 any existing `account_*` preferences into one `BankAccount`, marked
 `offered`, for the store's default currency. An upgrading install keeps
 quoting exactly what it quoted before — no manual step required.
