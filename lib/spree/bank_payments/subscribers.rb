@@ -23,12 +23,12 @@ module Spree
     def self.register_default_mailer_subscribers!
       subscribe_once('bank_transfer.instructions_ready') do |event|
         Spree::BankPayments::InstructionsMailer.
-          instructions(event.payload[:payment_session_id]).deliver_later
+          instructions(event.payload['payment_session_id']).deliver_later
       end
 
       subscribe_once('bank_transfer.reminder_due') do |event|
         Spree::BankPayments::InstructionsMailer.
-          reminder(event.payload[:payment_session_id]).deliver_later
+          reminder(event.payload['payment_session_id']).deliver_later
       end
     end
 

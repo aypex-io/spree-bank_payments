@@ -21,6 +21,8 @@ end
 Rails.application.config.to_prepare do
   Spree::BankPayments::Reconcilers::Base.register('manual', Spree::BankPayments::Reconcilers::Manual)
 
+  Spree::BankPayments.declare_events!
+
   # Subscribers must re-register per reload too: spree_core's own to_prepare hook
   # calls Spree::Events.reset!, which drops Proc-based subscribers registered at boot.
   Spree::BankPayments.register_default_mailer_subscribers! unless Spree::BankPayments::Config.disable_default_mailer
