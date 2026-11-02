@@ -1,7 +1,12 @@
 module Spree
   module BankPayments
     class IncomingTransfer < Base
+      has_prefix_id :btxfr
+
       STATES = %w[unmatched applied ignored].freeze
+
+      self.whitelisted_ransackable_attributes = %w[state currency payer_name reference_raw occurred_at amount]
+      self.whitelisted_ransackable_associations = %w[bank_account]
 
       # Crockford base32 decoding folds these ambiguous glyphs. Applied to both
       # sides of a comparison, so a customer typing O for 0 still matches.
