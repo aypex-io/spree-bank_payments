@@ -1,0 +1,116 @@
+{
+  "admin": {
+    "bank_payments": {
+      "nav": "Bank transfers",
+      "states": {
+        "unmatched": "Unmatched",
+        "applied": "Applied",
+        "ignored": "Ignored"
+      },
+      "fields": {
+        "occurred_at": "Received",
+        "amount": "Amount",
+        "currency": "Currency",
+        "reference": "Reference",
+        "payer_name": "Payer",
+        "account": "Account",
+        "state": "Status",
+        "order": "Order",
+        "payment_method": "Payment method",
+        "ignored_reason": "Reason ignored"
+      },
+      "pooled": "Pooled",
+      "queue": {
+        "title": "Bank transfers",
+        "empty": "No transfers are waiting for a match.",
+        "record": "Record a transfer",
+        "search_placeholder": "Search by reference or payer"
+      },
+      "transfer": {
+        "title": "Transfer {{reference}}",
+        "no_reference": "No reference",
+        "suggestions": "Possible matches",
+        "no_suggestions": "No open bank transfer matches this amount or payer. Check the order number with the payer, or ignore the transfer.",
+        "exact_match": "Exact match",
+        "apply": "Apply to {{number}}",
+        "applied_to": "Applied to order {{number}}",
+        "ignore": "Ignore",
+        "ignore_title": "Ignore this transfer?",
+        "ignore_reason_label": "Why is it being ignored?",
+        "ignore_reason_placeholder": "Refunded to the payer, a test payment, a duplicate…",
+        "ignored": "Transfer ignored.",
+        "applied": "Payment applied to order {{number}}.",
+        "mismatch_title": "The amounts differ",
+        "mismatch_body": "The transfer is {{transfer_amount}} {{transfer_currency}} but order {{number}} owes {{session_amount}} {{currency}}. If you apply it anyway, the order is credited for what arrived.",
+        "mismatch_confirm": "Apply anyway",
+        "pooled_warning": "This account is pooled: other payers share its details, so only the reference separates them. Check the reference before applying."
+      },
+      "record": {
+        "title": "Record a received transfer",
+        "description": "Enter a transfer exactly as it appears on the bank statement. An exact match is applied at once; anything else waits in the queue.",
+        "submit": "Record transfer",
+        "applied": "Transfer recorded and applied to order {{number}}.",
+        "queued": "Transfer recorded. It is waiting in the queue for a match.",
+        "already_recorded": "That transfer was already recorded. Nothing was applied a second time."
+      },
+      "accounts": {
+        "title": "Bank accounts",
+        "description": "Customers are quoted the offered account in their order's currency. Every active account is watched, so switching the offered one never strands an order in flight.",
+        "offered": "Offered",
+        "active": "Active",
+        "inactive": "Inactive",
+        "synced": "Synced",
+        "manual": "Manual",
+        "offer": "Offer to customers",
+        "deactivate": "Deactivate",
+        "activate": "Activate",
+        "delete": "Delete",
+        "delete_title": "Delete this account?",
+        "delete_body": "Orders already quoted this account keep showing its details.",
+        "empty": "No accounts yet. Sync from the provider, or add one by hand.",
+        "sync": "Sync from provider",
+        "sync_title": "Changes from the provider",
+        "sync_create": "New accounts",
+        "sync_update": "Refreshed accounts",
+        "sync_deactivate": "Accounts to deactivate",
+        "sync_skipped": "Skipped",
+        "sync_nothing": "Everything is already up to date.",
+        "sync_apply": "Apply changes",
+        "synced_done": "Accounts synced. Offer an account per currency for customers to be quoted it."
+      },
+      "order_card": {
+        "title": "Bank transfer",
+        "reference": "Reference",
+        "amount": "Amount to transfer",
+        "deadline": "Pay by",
+        "status": "Status",
+        "awaiting": "Awaiting transfer",
+        "paid": "Paid",
+        "transfer": "Transfer received {{date}}",
+        "view_transfer": "View transfer"
+      },
+      "session_status": {
+        "pending": "Quoted",
+        "processing": "Awaiting transfer",
+        "completed": "Paid",
+        "failed": "Failed",
+        "canceled": "Canceled",
+        "expired": "Expired"
+      },
+      "guide": {
+        "title": "Bank transfer setup",
+        "health": "Reconciler",
+        "health_ok": "Healthy",
+        "health_transient": "Not polling",
+        "health_consent_revoked": "Consent revoked: re-authorise the provider",
+        "last_poll": "Last successful poll",
+        "never": "Never",
+        "last_error": "Last error",
+        "webhook_url": "Webhook URL to paste into the provider",
+        "no_offered_account": "No account is offered in any currency, so customers are not offered bank transfer. Open Bank accounts and offer one per currency.",
+        "offered_in": "Offered in {{currencies}}",
+        "accounts_link": "Bank accounts"
+      }
+    }
+  }
+}
