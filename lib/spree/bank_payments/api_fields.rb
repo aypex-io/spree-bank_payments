@@ -23,10 +23,14 @@ module Spree
         }
       })
 
+      # Nothing for a payment voided by a switch or an expiry: its reference
+      # matches nothing now, and must not be shown as something to pay.
       fields.attribute(:payment_serializer, :bank_transfer, value: lambda { |payment|
         next unless payment.payment_method.is_a?(Spree::BankPayments::Gateway)
+        next unless %w[checkout pending processing completed].include?(payment.status)
 
         Spree::PaymentSessions::BankTransfer.
+          where(status: %w[pending processing completed]).
           find_by(payment_method_id: payment.payment_method_id, external_id: payment.response_code)&.
           quote
       })

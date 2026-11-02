@@ -77,4 +77,35 @@ RSpec.describe 'bank transfer discount and tax' do
 
     expect(order.payments.last.amount).to eq(BigDecimal('97.00'))
   end
+
+  # The buyer picked bank transfer but never completed it, and a payment
+  # another way was sized against the discounted total, outside the Store
+  # API's release. The discount is not the buyer's: bank transfer is not
+  # paying. Releasing it leaves the cart short, so Spree refuses to place it
+  # rather than place an order on a discount nobody earned.
+  describe 'a cart another payment would pay at the discounted total' do
+    let(:cart) { bank_transfer_cart(gateway: gateway, price: 100) }
+    let!(:bank_session) { gateway.create_payment_session(order: cart) }
+    let(:result) do
+      check = create(:check_payment_method, store: cart.store)
+      create(:payment, cart: cart, order: nil, payment_method: check, amount: cart.reload.total)
+      Spree.carts_complete_workflow.call(cart: cart)
+    end
+
+    it 'is not placed' do
+      expect(result).not_to be_success
+    end
+
+    it 'retires the bank transfer session' do
+      result
+
+      expect(bank_session.reload.status).to eq('canceled')
+    end
+
+    it 'takes the discount back off the cart' do
+      result
+
+      expect(bank_transfer_discounts(cart)).to be_empty
+    end
+  end
 end

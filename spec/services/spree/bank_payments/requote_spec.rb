@@ -46,4 +46,27 @@ RSpec.describe 'Requoting a bank transfer session' do
 
     expect(cart.payments.last.amount).to eq(BigDecimal('150.00'))
   end
+
+  # Completing the cart recalculates it under Spree's lock; the quote and the
+  # pending payment must follow, or the buyer is emailed a figure the order
+  # does not owe.
+  describe 'a cart that shrinks after the session was completed' do
+    let(:placed) do
+      extra = add_item(50)
+      gateway.complete_payment_session(payment_session: session)
+      cart.line_items.find_by!(price: 50).destroy!
+      cart.reload.recalculate_totals!
+      Spree.carts_complete_workflow.call(cart: cart).value
+    end
+
+    it 'leaves the pending payment owing the order total' do
+      expect(placed.payments.last.amount).to eq(placed.total)
+    end
+
+    it 'requotes the session to the order total' do
+      placed
+
+      expect(session.reload.amount).to eq(BigDecimal('100.00'))
+    end
+  end
 end

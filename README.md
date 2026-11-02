@@ -58,8 +58,12 @@ API, as a payment session:
 2. **The buyer places the order.** The storefront completes the session
    (`PATCH .../payment_sessions/:id/complete`), which re-quotes the cart and
    leaves a pending payment carrying the reference, then completes the cart
-   (`POST /api/v3/store/carts/:cart_id/complete`). Spree places the order
-   unpaid: its `payment_status` is `authorized`.
+   (`POST /api/v3/store/carts/:cart_id/complete`). Completing the cart
+   re-quotes once more, under Spree's lock, so the quote, the payment and the
+   order total are equal however the cart changed. Spree places the order
+   unpaid: its `payment_status` is `authorized`. A session that was released
+   or has expired cannot be completed: the Store API answers 422 and the buyer
+   chooses bank transfer again.
 3. **The confirmation page shows how to pay.** Every bank transfer payment,
    on the cart and on the order (`GET /api/v3/store/orders/:id`), carries a
    `bank_transfer` field with the same quote. The payment method itself
@@ -67,13 +71,17 @@ API, as a payment session:
    checkout to advertise before the buyer chooses.
 
 If the buyer switches to another payment method, bank transfer is released
-before Spree sizes the other method's session or payment: its session is
-cancelled and the discount comes off, so the other method charges the full
-total.
+before Spree sizes the other method's session or payment, or updates or
+completes one created earlier: its session is cancelled and the discount
+comes off, so the other method charges the full total. A bank transfer
+session the buyer never completed is also released when the cart completes,
+so the discount only reaches an order bank transfer is paying.
 
 Spree holds dispatch of an unpaid bank transfer order (its "not paid for
-yet" rule) unless staff force it, and the payment is captured when the
-transfer is reconciled, never on dispatch.
+yet" rule) unless staff force it. The payment is captured when a transfer is
+applied to it, and never otherwise: not on dispatch, and not from the
+dashboard's Capture action, which Spree's capture workflow refuses for a
+bank transfer payment.
 
 ## Bank accounts and currencies
 
@@ -299,13 +307,13 @@ subscribers decide what to do. Every event is declared, as Spree 6 requires.
 | Event | Fired when | Webhooks |
 |---|---|---|
 | `bank_transfer.instructions_ready` | The order is placed, and the buyer needs the reference and bank details | yes |
-| `bank_transfer.reminder_due` | An unpaid placed order is approaching its deadline | yes |
+| `bank_transfer.reminder_due` | An open session on a placed order is approaching its deadline | yes |
 | `bank_transfer.expired` | `ExpireSessionsJob` cancels an unpaid order | yes |
 | `bank_transfer.session_superseded` | An open session is closed because its order was already paid another way; the order is left alone | yes |
 | `bank_transfer.reconciler_unhealthy` | The [health gate](#the-health-gate) trips: `ExpireSessionsJob` declined to cancel anything because the reconciler is stale | never |
 | `bank_transfer.reconciler_health.unhealthy` | `PollJob` reports a *transition* into `:transient` or `:consent_revoked`, and at most hourly while it persists. Carries `status`, `reason` and `consecutive_failures` (see [`#health`](#health)) | never |
 | `bank_transfer.reconciler_health.recovered` | The same reporter sees health return to `:ok` | never |
-| `bank_transfer.expiry_failed` | `ExpireSessionsJob` hits an error for a payment method, or Spree refuses to cancel a specific order | never |
+| `bank_transfer.expiry_failed` | `ExpireSessionsJob` hits an error for a payment method or a session, or Spree refuses to cancel a specific order | never |
 
 The four operational events carry reconciler error text, so they are
 declared `webhook: false`: no webhook endpoint receives them, not even one

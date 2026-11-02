@@ -14,7 +14,6 @@ module Spree
     class ExpireSessionsJob < ActiveJob::Base
       queue_as :default
 
-      SETTLED_PAYMENT_STATUSES = %w[paid overcharged].freeze
       CANCEL_NOTE = 'Bank transfer not received by the payment deadline.'.freeze
 
       def perform
@@ -52,7 +51,16 @@ module Spree
           open.
           where(payment_method_id: payment_method.id).
           where(expires_at: ...Time.current).
-          find_each { |session| close(session) }
+          find_each { |session| close_safely(session) }
+      end
+
+      # One session raising (a void the gateway rejects, say) must not stop
+      # the run for every later session on the same gateway.
+      def close_safely(session)
+        close(session)
+      rescue StandardError => e
+        report_failure(session, e.message)
+        Rails.error.report(e, source: 'spree_bank_payments.expire_sessions')
       end
 
       def close(session)
@@ -62,7 +70,7 @@ module Spree
           # An abandoned checkout. There is no order to cancel and no
           # cancellation to announce.
           session.expire
-        elsif SETTLED_PAYMENT_STATUSES.include?(order.payment_status)
+        elsif Spree::BankPayments::SETTLED_PAYMENT_STATUSES.include?(order.payment_status)
           # C2: paid another way. Nothing else closes the session when that
           # happens, and cancelling would restock an order paid in full.
           # `canceled`, not `expired`: in this gem `expired` means "never paid,
@@ -86,14 +94,18 @@ module Spree
         if result.success?
           session.publish_bank_transfer_event('bank_transfer.expired') if session.expire
         else
-          session.payment_method.publish_operational_event(
-            'bank_transfer.expiry_failed',
-            payment_method_id: session.payment_method.prefixed_id,
-            payment_session_id: session.prefixed_id,
-            order_number: order.number,
-            error: result.error.to_s
-          )
+          report_failure(session, result.error.to_s)
         end
+      end
+
+      def report_failure(session, error)
+        session.payment_method.publish_operational_event(
+          'bank_transfer.expiry_failed',
+          payment_method_id: session.payment_method.prefixed_id,
+          payment_session_id: session.prefixed_id,
+          order_number: session.order&.number,
+          error: error
+        )
       end
     end
   end

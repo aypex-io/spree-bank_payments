@@ -37,16 +37,27 @@ Spree 5.6 stays on 5.3.x, on the `5-3-stable` branch. To upgrade, see
   `external_data.bank_transfer`, which a client cannot write. Completing the
   session re-quotes, then leaves a pending payment carrying the reference, so
   Spree places the order unpaid (`payment_status` `authorized`).
-- **Changing the cart after choosing bank transfer** re-quotes on completion,
-  and the pending payment follows the new total.
+- **Changing the cart after choosing bank transfer** re-quotes it, up to the
+  moment the order is placed: completing the session re-quotes, and so does
+  completing the cart, under Spree's lock. The quote, the pending payment and
+  the order total are always equal.
+- **A released, expired or completed session cannot be completed again**
+  (or updated): the Store API answers 422, so an order is never placed
+  against a reference nothing will match.
 - **Switching to another payment method releases bank transfer first.**
-  Before the Store API creates another method's session or payment, the bank
-  transfer session is cancelled, its payment voided and the discount
-  recalculated away, so the other method charges the full total.
+  Before the Store API creates another method's session or payment, or
+  updates or completes one created earlier, the bank transfer session is
+  cancelled, its payment voided and the discount recalculated away, so the
+  other method charges the full total. A request Spree refuses releases
+  nothing. A bank transfer session the buyer never completed is released when
+  the cart completes, so an order is never placed on a discount bank transfer
+  is not paying.
 - **Spree holds dispatch of an unpaid bank transfer order** unless staff
   force it: the gateway captures at checkout, so its pending payment does not
   count as money staff have taken charge of collecting. `authorize` and
-  `purchase` refuse; money moves only when a transfer is reconciled.
+  `purchase` refuse, and the dashboard offers no Capture: Spree's capture
+  workflow refuses a bank transfer payment unless a transfer is being applied
+  to it. Money moves only when a transfer is reconciled.
 - **The Store API shows the quote**: a bank transfer payment, on the cart and
   on the order, carries a `bank_transfer` field with the reference, amount,
   deadline and bank details. The payment method carries
@@ -63,7 +74,10 @@ Spree 5.6 stays on 5.3.x, on the `5-3-stable` branch. To upgrade, see
 ### Reconciliation and expiry
 
 - A transfer settles through `Spree.payment_capture_workflow`, so Spree
-  records the capture and publishes `payment.captured`.
+  records the capture and publishes `payment.captured`. Under the order's
+  lock it re-checks that the session is still open and the order still
+  placed, so a second transfer racing the first queues rather than being
+  marked applied with nothing captured.
 - **Only placed orders reconcile automatically.** A transfer quoting a
   reference from a checkout that was never placed queues for a person, and is
   never suggested; it is not used to place the cart.
@@ -71,11 +85,17 @@ Spree 5.6 stays on 5.3.x, on the `5-3-stable` branch. To upgrade, see
   webhook workflow has nothing to settle a second time.
 - An unpaid placed order past its deadline is cancelled through
   `Spree.order_cancel_workflow`, which releases its stock and voids the
-  payment, with a staff note. A cancel Spree refuses leaves the session open
-  and reports `bank_transfer.expiry_failed`. A session whose checkout was
-  never placed is expired silently.
-- Settled means `paid` or `overcharged`, Spree 6's names for 5.x's `paid` and
-  `credit_owed`.
+  payment, with a staff note. A cancel Spree refuses, or one that raises,
+  leaves the session open and reports `bank_transfer.expiry_failed`, and the
+  run carries on with the next session. A session whose checkout was never
+  placed is expired silently.
+- An order counts as paid when its `payment_status` is `paid`, `overcharged`,
+  `partially_refunded` or `refunded`: it is never cancelled for an unpaid
+  transfer, and a transfer for it queues for a person.
+- **Upgrading:** Spree's own upgrade writes each 5.x bank transfer discount as
+  a 0.00 surcharge. Run `bin/rails spree_bank_payments:upgrade:legacy_discounts`
+  after `spree:upgrade` to restore them as discounts; otherwise the next
+  re-sum of such an order raises its total by the discount.
 
 ### Events and email
 

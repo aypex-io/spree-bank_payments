@@ -21,9 +21,18 @@ gem 'spree-bank_payments', '~> 6.0'
 bundle update spree-bank_payments
 bin/rails spree_bank_payments:install:migrations
 bin/rails db:migrate
+bin/rails spree_bank_payments:upgrade:legacy_discounts
 ```
 
 6.0.0 adds no migrations of its own.
+
+**Run `spree_bank_payments:upgrade:legacy_discounts` after Spree's
+`spree:upgrade`.** Spree's conversion of 5.x adjustments does not know a
+discount sourced from a payment method, so it writes every 5.x bank transfer
+discount as a 0.00 surcharge. The order's stored total is still right, but
+the next time Spree re-sums the order (a cancel, an edit, a refund) its total
+rises by the discount. The task puts each one back as a discount, from the
+amount Spree left in `spree_adjustments`. It is safe to run more than once.
 
 ## What changes for staff
 
@@ -44,6 +53,8 @@ Until it ships:
 
 Staff can no longer dispatch an unpaid bank transfer order by accident:
 Spree refuses with "This order is not paid for yet" unless they force it.
+Nor can they mark one paid with Capture: a bank transfer payment is captured
+only when a transfer is applied to it.
 
 ## What changes for the storefront
 

@@ -80,6 +80,34 @@ RSpec.describe Spree::BankPayments::Gateway, 'payment sessions' do
     end
   end
 
+  # A released or expired session's reference matches nothing any more: an
+  # order paid through it would never be reconciled, reminded or expired.
+  describe 'a session that is no longer open' do
+    let!(:session) { gateway.create_payment_session(order: cart) }
+
+    before { Spree::BankPayments::ReleaseSelection.call(purchase: cart) }
+
+    it 'refuses to complete it' do
+      expect { gateway.complete_payment_session(payment_session: session.reload) }.
+        to raise_error(Spree::Core::GatewayError)
+    end
+
+    it 'creates no payment for it' do
+      begin
+        gateway.complete_payment_session(payment_session: session.reload)
+      rescue Spree::Core::GatewayError
+        nil
+      end
+
+      expect(cart.payments.where(response_code: session.reference)).to be_empty
+    end
+
+    it 'refuses to requote it' do
+      expect { gateway.update_payment_session(payment_session: session.reload) }.
+        to raise_error(Spree::Core::GatewayError)
+    end
+  end
+
   describe '#cancel_payment_session' do
     it 'cancels a session nobody completed' do
       session = gateway.create_payment_session(order: cart)

@@ -45,4 +45,48 @@ RSpec.describe 'Switching away from bank transfer', type: :request do
 
     expect(json_response['amount']).to eq('97.00')
   end
+
+  it 'refuses to complete the released bank session' do
+    bank_session = Spree::PaymentSessions::BankTransfer.find_by!(cart: cart)
+    post "/api/v3/store/carts/#{cart.prefixed_id}/payment_sessions",
+         params: { payment_method_id: cards.prefixed_id }, headers: headers, as: :json
+
+    patch "/api/v3/store/carts/#{cart.prefixed_id}/payment_sessions/#{bank_session.prefixed_id}/complete",
+          params: {}, headers: headers, as: :json
+
+    expect(response).to have_http_status(:unprocessable_content)
+  end
+
+  # A session of another method created before bank transfer was chosen was
+  # sized at the full total. Completing or updating it means the buyer is
+  # paying that way after all.
+  describe "completing another method's earlier session" do
+    let!(:card_session) { cards.create_payment_session(order: cart, amount: BigDecimal('100.00')) }
+
+    before { gateway.create_payment_session(order: cart) }
+
+    it 'takes the bank transfer discount off' do
+      patch "/api/v3/store/carts/#{cart.prefixed_id}/payment_sessions/#{card_session.prefixed_id}/complete",
+            params: {}, headers: headers, as: :json
+
+      expect(bank_transfer_discounts(cart)).to be_empty
+    end
+
+    it 'takes it off when that session is updated' do
+      patch "/api/v3/store/carts/#{cart.prefixed_id}/payment_sessions/#{card_session.prefixed_id}",
+            params: {}, headers: headers, as: :json
+
+      expect(bank_transfer_discounts(cart)).to be_empty
+    end
+  end
+
+  # A request Spree itself refuses must not have released anything.
+  it 'leaves bank transfer selected when the other method is not available' do
+    cards.update!(active: false)
+
+    post "/api/v3/store/carts/#{cart.prefixed_id}/payment_sessions",
+         params: { payment_method_id: cards.prefixed_id }, headers: headers, as: :json
+
+    expect(bank_transfer_discounts(cart)).not_to be_empty
+  end
 end
