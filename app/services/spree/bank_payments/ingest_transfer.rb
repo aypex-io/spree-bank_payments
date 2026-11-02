@@ -51,8 +51,11 @@ module Spree
           find_by(provider_account_id: data.provider_account_id)
       end
 
+      SETTLED_PAYMENT_STATUSES = %w[paid overcharged].freeze
+
       # Auto-apply demands certainty: exact reference, exact amount, exact
-      # currency, against exactly one still-open session. Anything else queues.
+      # currency, against exactly one still-open session of a placed order.
+      # Anything else queues.
       def matching_session(transfer)
         return nil if transfer.reference_normalized.blank?
 
@@ -64,6 +67,12 @@ module Spree
         return nil unless candidates.count == 1
 
         session = candidates.first
+
+        # A reference shown at checkout on a cart that was never placed. There
+        # is no order to pay, and applying it would mean placing a cart nobody
+        # placed.
+        return nil unless session.order&.placed?
+
         return nil unless session.amount == transfer.amount
         return nil unless session.currency == transfer.currency
 
@@ -77,10 +86,10 @@ module Spree
         # C2: the customer may have abandoned the transfer, paid by card, and
         # then sent the bank transfer anyway from the emailed instructions --
         # it would exact-match the still-open session and auto-apply a *second*
-        # payment, leaving the order in credit_owed with real money to refund.
+        # payment, leaving the order overcharged with real money to refund.
         # A second payment on a settled order is a human decision, so this
         # queues for the hand-match screen instead of applying itself.
-        return nil if %w[paid credit_owed].include?(session.order&.payment_state)
+        return nil if SETTLED_PAYMENT_STATUSES.include?(session.order.payment_status)
 
         session
       end

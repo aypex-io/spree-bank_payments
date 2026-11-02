@@ -10,7 +10,7 @@ RSpec.describe 'Dispatching a bank transfer order' do
   let(:session) { placed.last }
 
   def fulfil(**options)
-    Spree.fulfillment_fulfill_workflow.call(fulfillment: order.fulfillments.first, **options)
+    Spree.fulfillment_fulfill_workflow.call(fulfillment: order.reload.fulfillments.first, **options)
   end
 
   it 'refuses to dispatch an unpaid order' do
@@ -22,7 +22,6 @@ RSpec.describe 'Dispatching a bank transfer order' do
   end
 
   it 'dispatches once the transfer is applied' do
-    pending 'ApplyTransfer is ported in Task 7'
     transfer = create(:bank_transfer_incoming_transfer, payment_method: gateway, amount: session.amount,
                                                         currency: session.currency, reference_raw: session.reference)
     Spree::BankPayments::ApplyTransfer.call(transfer: transfer, payment_session: session)

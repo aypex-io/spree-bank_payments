@@ -32,7 +32,11 @@ module Spree
       def open_sessions
         return ::Spree::PaymentSessions::BankTransfer.none if transfer.payment_method_id.blank?
 
-        ::Spree::PaymentSessions::BankTransfer.open.where(payment_method_id: transfer.payment_method_id)
+        # Placed orders only: a session still on a cart is a reference nobody
+        # committed to, with no order to apply the money to.
+        ::Spree::PaymentSessions::BankTransfer.open.
+          where(payment_method_id: transfer.payment_method_id).
+          joins(:order).merge(::Spree::Order.where(status: 'placed'))
       end
 
       def amount_matches
@@ -48,13 +52,13 @@ module Spree
           where.not(id: exclude.map(&:id)).
           joins(order: :bill_address).
           where(
-            "similarity(concat_ws(' ', spree_addresses.firstname, spree_addresses.lastname), ?) > ?",
+            "similarity(concat_ws(' ', spree_addresses.first_name, spree_addresses.last_name), ?) > ?",
             transfer.payer_name, NAME_SIMILARITY_THRESHOLD
           ).
           order(
             Arel.sql(
               ActiveRecord::Base.sanitize_sql_array([
-                "similarity(concat_ws(' ', spree_addresses.firstname, spree_addresses.lastname), ?) DESC",
+                "similarity(concat_ws(' ', spree_addresses.first_name, spree_addresses.last_name), ?) DESC",
                 transfer.payer_name
               ])
             )

@@ -3,7 +3,7 @@ require 'spec_helper'
 RSpec.describe Spree::BankPayments::IngestTransfer do
   # discount_percent: 0 -- the factory default is 3%, which (as of Task 9)
   # is genuinely applied on payment creation and would shift order.total
-  # below the pinned 25.00 amount, making payment_state unreachably 'paid'.
+  # below the pinned 25.00 amount, making payment_status unreachably 'paid'.
   # This spec is about matching/application, not discount amount, so the
   # discount is switched off here rather than reworking the pinned totals.
   let(:payment_method) { create(:bank_transfer_gateway, preferred_discount_percent: 0) }
@@ -16,10 +16,10 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
   # :order_with_line_items. line_items_price/shipment_cost are pinned so
   # order.total == the hardcoded session/transfer amount below (25.00) —
   # the factory defaults (10.00 item + 100 shipment = 110.00 total) would
-  # make payment_state unreachably 'paid' for a 25.00 payment. That
+  # make payment_status unreachably 'paid' for a 25.00 payment. That
   # mismatch is a fixture bug, not a matching/application bug, so it's
   # fixed here rather than weakening the `be_applied` /
-  # `payment_state == 'paid'` assertions below.
+  # `payment_status == 'paid'` assertions below.
   let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
   let!(:session) do
     create(:bank_transfer_payment_session,
@@ -54,7 +54,7 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
       expect(transfer.payment_session).to eq(session)
       expect(transfer.payment_method_id).to eq(payment_method.id)
       expect(session.reload.status).to eq('completed')
-      expect(order.reload.payment_state).to eq('paid')
+      expect(order.reload.payment_status).to eq('paid')
     end
 
     it 'matches despite casing, spacing and punctuation' do
@@ -66,9 +66,9 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
     # the still-open session; auto-applying would credit a second payment
     # and leave real money to refund. That is a human decision.
     it 'refuses to auto-apply when the order has already been paid another way' do
-      create(:payment, order: order, amount: order.total, state: 'completed')
-      order.update_with_updater!
-      expect(order.reload.payment_state).to eq('paid')
+      create(:payment, order: order, amount: order.total, status: 'completed')
+      Spree.order_update_statuses_service.call(order: order.reload)
+      expect(order.reload.payment_status).to eq('paid')
 
       transfer = ingest
 
@@ -123,24 +123,47 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
     end
 
     it 'when the session is already expired' do
-      session.expire!
+      session.expire
       expect(ingest(provider_transaction_id: 'TX-7')).to be_unmatched
     end
 
     it 'when the session is already canceled' do
-      session.cancel!
+      session.cancel
       expect(ingest(provider_transaction_id: 'TX-8')).to be_unmatched
     end
   end
 
   describe 'failure during application' do
     it 'leaves the transfer re-processable rather than half applied' do
-      allow_any_instance_of(Spree::Payment).to receive(:complete!).and_raise(StandardError, 'boom')
+      allow(Spree.payment_capture_workflow).to receive(:call).and_raise(StandardError, 'boom')
 
       expect { ingest }.to raise_error(StandardError, 'boom')
       expect(Spree::BankPayments::IncomingTransfer.last).to be_unmatched
       expect(session.reload.status).to eq('pending')
       expect(Spree::Payment.count).to eq(0)
+    end
+  end
+
+  # A buyer can see a reference at checkout and pay it without ever placing
+  # the order. Applying it would have to place a cart nobody placed.
+  describe 'a session whose cart was never placed' do
+    let(:gateway) { create(:bank_transfer_gateway, preferred_discount_percent: 0) }
+    let(:cart_session) { gateway.create_payment_session(order: bank_transfer_cart(gateway: gateway, price: 100)) }
+
+    def ingest_for_cart
+      data = transfer_data(provider_transaction_id: 'TX-CART', amount: cart_session.amount,
+                           currency: cart_session.currency, reference: cart_session.reference)
+      described_class.new(payment_method: gateway, transfer_data: data).call
+    end
+
+    it 'queues the transfer' do
+      expect(ingest_for_cart.state).to eq('unmatched')
+    end
+
+    it 'places nothing' do
+      cart_session
+
+      expect { ingest_for_cart }.not_to change(Spree::Order, :count)
     end
   end
 end

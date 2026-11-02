@@ -11,16 +11,17 @@ require 'spec_helper'
 RSpec.describe 'auto-apply against a pooled account' do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let!(:account) do
-    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP',
+    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'USD',
                                          offered: true, pooled: true, provider_account_id: 'acc_pool')
   end
-  let(:order) { create(:completed_order_with_totals, currency: 'GBP') }
-  let!(:session) { payment_method.create_payment_session(order: order) }
+  let!(:session) do
+    place_with_bank_transfer(bank_transfer_cart(gateway: payment_method, price: 100), gateway: payment_method).last
+  end
 
   def ingest(reference:)
     data = Spree::BankPayments::TransferData.new(
       provider: 'test', provider_transaction_id: SecureRandom.uuid,
-      provider_account_id: 'acc_pool', amount: session.amount, currency: 'GBP',
+      provider_account_id: 'acc_pool', amount: session.amount, currency: session.currency,
       reference: reference, payer_name: 'Someone Else', occurred_at: Time.current, raw: {}
     )
     Spree::BankPayments::IngestTransfer.new(payment_method: payment_method, transfer_data: data).call
