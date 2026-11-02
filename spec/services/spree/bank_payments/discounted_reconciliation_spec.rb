@@ -1,40 +1,32 @@
 require 'spec_helper'
 
-# The real production path: a discounted order is quoted through
-# Gateway#create_payment_session (which now applies the discount before
-# reading the amount -- see gateway_spec.rb), and the customer transfers
-# exactly that quoted, discounted figure. Nothing else exercises this full
-# round trip -- ingest_transfer_spec.rb and apply_transfer_spec.rb zero out
-# the discount so they can pin an undiscounted amount, which is correct for
-# what they test but leaves this path uncovered.
-RSpec.describe 'reconciling a discounted bank-transfer order end-to-end' do
-  it 'auto-applies a transfer for the discounted amount and reaches paid' do
-    payment_method = create(:bank_transfer_gateway) # 3% in the factory
-    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
-    order = create(:completed_order_with_totals, currency: 'GBP', line_items_price: 100.00, shipment_cost: 0)
+# The production path end to end: a buyer is quoted the discounted amount at
+# checkout, places the order, and transfers exactly that figure.
+RSpec.describe 'reconciling a discounted bank transfer order end to end' do
+  let(:gateway) { create(:bank_transfer_gateway) } # 3% in the factory
+  let(:placed) { place_with_bank_transfer(bank_transfer_cart(gateway: gateway, price: 100), gateway: gateway) }
 
-    session = payment_method.create_payment_session(order: order)
-    order.reload
-
-    expect(session.amount).to eq(97.00)
-    expect(order.total).to eq(97.00)
-
-    transfer_data = Spree::BankPayments::TransferData.new(
-      provider: 'test',
-      provider_transaction_id: 'TX-DISCOUNTED-1',
-      amount: session.amount,
-      currency: session.currency,
-      reference: session.external_id,
-      payer_name: 'Jane Doe',
-      occurred_at: Time.current,
-      raw: {}
+  def ingest(session)
+    data = Spree::BankPayments::TransferData.new(
+      provider: 'test', provider_transaction_id: 'TX-DISCOUNTED-1',
+      amount: session.amount, currency: session.currency, reference: session.reference,
+      payer_name: 'Jane Doe', occurred_at: Time.current, raw: {}
     )
+    Spree::BankPayments::IngestTransfer.new(payment_method: gateway, transfer_data: data).call
+  end
 
-    transfer = Spree::BankPayments::IngestTransfer.new(payment_method: payment_method, transfer_data: transfer_data).call
+  it 'quotes the discounted amount' do
+    expect(placed.last.amount).to eq(BigDecimal('97.00'))
+  end
 
-    expect(transfer).to be_applied
-    expect(transfer.payment_session).to eq(session)
-    expect(session.reload.status).to eq('completed')
-    expect(order.reload.payment_state).to eq('paid')
+  it 'auto-applies a transfer for that amount' do
+    expect(ingest(placed.last)).to be_applied
+  end
+
+  it 'leaves the order paid' do
+    order, session = placed
+    ingest(session)
+
+    expect(order.reload.payment_status).to eq('paid')
   end
 end

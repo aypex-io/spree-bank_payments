@@ -5,7 +5,7 @@ RSpec.describe Spree::BankPayments::Gateway, '#parse_webhook_event' do
   let!(:bank_account) do
     create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
   end
-  let(:order) { create(:order_with_line_items, currency: 'GBP') }
+  let(:order) { create(:completed_order_with_totals, currency: 'GBP') }
   let!(:session) do
     create(:bank_transfer_payment_session,
            order: order, payment_method: payment_method,
@@ -35,13 +35,20 @@ RSpec.describe Spree::BankPayments::Gateway, '#parse_webhook_event' do
     expect(result).to be_nil
   end
 
-  it 'ingests and reports a captured action on an exact match' do
+  # The gem applies the transfer itself, under its own matching rules, so
+  # Spree's webhook workflow is given nothing to settle: it would otherwise
+  # complete a cart whose session matched, placing an order nobody placed.
+  it 'ingests the transfer and leaves nothing for Spree to settle' do
     stub_reconciler(data)
 
-    result = payment_method.parse_webhook_event('{}', {})
+    expect(payment_method.parse_webhook_event('{}', {})).to be_nil
+  end
 
-    expect(result[:action]).to eq(:captured)
-    expect(result[:payment_session]).to eq(session)
+  it 'applies the transfer it ingested' do
+    stub_reconciler(data)
+
+    payment_method.parse_webhook_event('{}', {})
+
     expect(Spree::BankPayments::IncomingTransfer.last).to be_applied
   end
 

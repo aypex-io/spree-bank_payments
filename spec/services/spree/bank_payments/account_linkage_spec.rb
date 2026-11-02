@@ -5,6 +5,15 @@ RSpec.describe 'bank account linkage' do
   let!(:gbp) { create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP', offered: true, provider_account_id: 'acc-gbp') }
   let(:order) { create(:order_with_line_items, currency: 'GBP') }
 
+  # Quotes the order, then places it: only a placed order's session is
+  # matched automatically. Marked placed directly, as a GBP checkout needs a
+  # delivery method this store does not have.
+  def quote_and_place
+    gateway.create_payment_session(order: order).tap do
+      order.update_columns(status: 'placed', completed_at: Time.current)
+    end
+  end
+
   it 'records the quoted account on the session' do
     session = gateway.create_payment_session(order: order)
 
@@ -28,7 +37,7 @@ RSpec.describe 'bank account linkage' do
   it 'queues rather than auto-applying when the accounts disagree' do
     other = create(:bank_payments_bank_account, payment_method: gateway, currency: 'EUR',
                    offered: true, provider_account_id: 'acc-eur')
-    session = gateway.create_payment_session(order: order)
+    session = quote_and_place
 
     data = Spree::BankPayments::TransferData.new(
       provider: 'test', provider_transaction_id: 'TX-2', amount: session.amount, currency: 'GBP',
@@ -42,7 +51,7 @@ RSpec.describe 'bank account linkage' do
   end
 
   it 'still auto-applies when the session has no recorded account' do
-    session = gateway.create_payment_session(order: order)
+    session = quote_and_place
     session.update!(bank_account_id: nil)
 
     data = Spree::BankPayments::TransferData.new(
@@ -59,7 +68,7 @@ RSpec.describe 'bank account linkage' do
   # Offered and watched are independent: this is what makes switching accounts
   # safe for orders already in flight.
   it 'auto-applies a transfer into a watched but no-longer-offered account' do
-    session = gateway.create_payment_session(order: order)
+    session = quote_and_place
     gbp.update!(offered: false)
 
     data = Spree::BankPayments::TransferData.new(
@@ -81,7 +90,7 @@ RSpec.describe 'bank account linkage' do
   # + currency. Documented behaviour, not an accident: see the brief's
   # discussion of paranoid BankAccount.
   it 'still auto-applies when the arriving account was soft-deleted' do
-    session = gateway.create_payment_session(order: order)
+    session = quote_and_place
     gbp.destroy
 
     data = Spree::BankPayments::TransferData.new(
@@ -104,7 +113,7 @@ RSpec.describe 'bank account linkage' do
     gbp.update!(offered: false)
     other_gbp = create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP',
                         offered: true, provider_account_id: 'acc-gbp-2')
-    session = gateway.create_payment_session(order: order)
+    session = quote_and_place
     expect(session.bank_account).to eq(other_gbp)
 
     data = Spree::BankPayments::TransferData.new(
@@ -123,7 +132,7 @@ RSpec.describe 'bank account linkage' do
   # that has none (the mirror of the already-covered
   # session-present/transfer-nil case) must still auto-apply.
   it 'still auto-applies when the transfer recorded an account but the session has none' do
-    session = gateway.create_payment_session(order: order)
+    session = quote_and_place
     session.update!(bank_account_id: nil)
 
     data = Spree::BankPayments::TransferData.new(

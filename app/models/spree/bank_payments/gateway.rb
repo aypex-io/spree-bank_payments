@@ -244,22 +244,20 @@ module Spree
         reconciler_state.healthy?(preferred_poll_interval_minutes) ? :ok : :transient
       end
 
-      # Called by Spree::Api::V3::Webhooks::PaymentsController. Signature
-      # verification happens inside the reconciler and raises
-      # Spree::PaymentMethod::WebhookSignatureError, which the controller turns
-      # into a 401.
+      # Called by Spree's payments webhook endpoint. Signature verification
+      # happens inside the reconciler, which raises
+      # Spree::PaymentMethod::WebhookSignatureError for a 401.
+      #
+      # Always nil: the transfer is ingested and, on a certain match, applied
+      # here, under this gem's matching rules. Handing a session back would
+      # let Spree's webhook workflow settle it again, and complete the cart of
+      # a session that was never placed.
+      #
+      # @return [nil]
       def parse_webhook_event(raw_body, headers)
         data = reconciler.parse_webhook(raw_body, headers)
-        return nil if data.nil?
-
-        transfer = IngestTransfer.new(payment_method: self, transfer_data: data).call
-        return nil unless transfer.applied?
-
-        {
-          action: :captured,
-          payment_session: transfer.payment_session,
-          metadata: { incoming_transfer_id: transfer.id }
-        }
+        IngestTransfer.new(payment_method: self, transfer_data: data).call unless data.nil?
+        nil
       end
 
       # The account customers are quoted for this currency. Only one can be

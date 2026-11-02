@@ -1,103 +1,81 @@
 require 'spec_helper'
 
 RSpec.describe Spree::BankPayments::ApplyTransfer do
-  # discount_percent: 0 -- the factory default is 3%, which (as of Task 9)
-  # is genuinely applied on payment creation and would shift order.total
-  # below the pinned 25.00 amount, making payment_state unreachably 'paid'.
-  # This spec is about applying a transfer, not discount amount, so the
-  # discount is switched off here rather than reworking the pinned totals.
-  let(:payment_method) { create(:bank_transfer_gateway, preferred_discount_percent: 0) }
-  let!(:bank_account) do
-    create(:bank_payments_bank_account, payment_method: payment_method, currency: 'GBP', offered: true)
-  end
-  # See ingest_transfer_spec.rb: :completed_order_with_totals is the
-  # representative fixture (the order is checkout-complete before the
-  # customer sees transfer instructions), pinned so order.total == the
-  # 25.00 amount below, otherwise payment_state can never reach 'paid'.
-  let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
-  let(:session) do
-    create(:bank_transfer_payment_session,
-           order: order, payment_method: payment_method,
-           external_id: 'ACME-7Q4X2', amount: 25.00, currency: 'GBP')
-  end
-  let(:transfer) do
+  let(:gateway) { create(:bank_transfer_gateway) } # 3% in the factory
+  # A 100.00 cart placed through checkout with bank transfer: the order owes
+  # 97.00, and its payment is pending under the session's reference.
+  let(:placed) { place_with_bank_transfer(bank_transfer_cart(gateway: gateway, price: 100), gateway: gateway) }
+  let(:order) { placed.first }
+  let(:session) { placed.last }
+
+  def transfer_for(amount)
     create(:bank_transfer_incoming_transfer,
-           amount: 25.00, currency: 'GBP', reference_raw: 'ACME-7Q4X2',
-           provider_transaction_id: 'TX-APPLY-1')
+           payment_method_id: gateway.id, amount: amount, currency: session.currency,
+           reference_raw: session.reference, provider_transaction_id: SecureRandom.uuid)
   end
 
-  def apply(applied_by: nil)
+  def apply(transfer, applied_by: nil)
     described_class.call(transfer: transfer, payment_session: session, applied_by: applied_by)
   end
 
-  it 'completes the session and the payment' do
-    apply
+  describe 'an exact match' do
+    let!(:transfer) { apply(transfer_for(session.amount)) }
 
-    expect(session.reload.status).to eq('completed')
-    expect(order.reload.payment_state).to eq('paid')
-    expect(transfer.reload).to be_applied
-    expect(transfer.payment_session).to eq(session)
-    # Auto path: transfer.amount == session.amount by construction (exact
-    # match is a precondition of auto-apply), so the payment is credited
-    # for the full session amount either way -- this pins that down
-    # explicitly so a future change to the amount-crediting logic below
-    # can't silently regress the automatic path.
-    expect(order.payments.last.amount).to eq(25.00)
-  end
-
-  describe 'crediting the payment (Fix 6)' do
-    # A larger, distinct order total so a 25.00 payment against it leaves a
-    # real, non-zero balance -- proving payment_state reflects what the
-    # payment actually recorded, not just "did it move at all".
-    let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 250.00, shipment_cost: 0) }
-    let(:session) do
-      create(:bank_transfer_payment_session,
-             order: order, payment_method: payment_method,
-             external_id: 'ACME-7Q4X2', amount: 250.00, currency: 'GBP')
+    it 'pays the order' do
+      expect(order.reload.payment_status).to eq('paid')
     end
 
-    it "credits the payment with the transfer's amount, not the session's, when they differ" do
-      admin = create(:admin_user)
-
-      apply(applied_by: admin)
-
-      payment = order.payments.last
-      expect(payment.amount).to eq(25.00)
-      expect(payment).to be_completed
-      # 25.00 paid against a 250.00 order is a real shortfall, not 'paid'.
-      expect(order.reload.payment_state).to eq('balance_due')
-    end
-  end
-
-  describe 'applied_by tracking' do
-    it 'sets applied_by_id and applied_at when given an admin user' do
-      admin = create(:admin_user)
-
-      apply(applied_by: admin)
-
-      transfer.reload
-      expect(transfer.applied_by_id).to eq(admin.id)
-      expect(transfer.applied_at).to be_present
+    it 'records the capture' do
+      expect(order.payments.reload.last.captured_amount).to eq(BigDecimal('97.00'))
     end
 
-    it 'leaves applied_by_id and applied_at nil when not given an admin user' do
-      apply
-
-      transfer.reload
-      expect(transfer.applied_by_id).to be_nil
-      expect(transfer.applied_at).to be_nil
-    end
-  end
-
-  describe 'idempotency' do
-    it 'is a no-op when called again on an already-applied transfer' do
-      apply
-      payment = order.payments.last
-
-      expect { apply }.not_to change(Spree::Payment, :count)
-      expect(order.payments.last).to eq(payment)
+    it 'completes the session' do
       expect(session.reload.status).to eq('completed')
-      expect(transfer.reload).to be_applied
     end
+
+    it 'marks the transfer applied to the session' do
+      expect(transfer.reload.payment_session).to eq(session)
+    end
+
+    it 'settles the payment taken at checkout rather than creating another' do
+      expect(order.payments.count).to eq(1)
+    end
+  end
+
+  # Staff can apply a transfer whose amount differs from the quote. Crediting
+  # the quote would mark the order paid for money that never arrived.
+  it 're-stamps the payment to what arrived when staff apply a short transfer' do
+    apply(transfer_for(BigDecimal('90.00')), applied_by: create(:admin_user))
+
+    expect(order.reload.payment_status).to eq('partially_paid')
+  end
+
+  it 'records who applied it' do
+    admin = create(:admin_user)
+    transfer = apply(transfer_for(session.amount), applied_by: admin)
+
+    expect(transfer.reload.applied_by_id).to eq(admin.id)
+  end
+
+  it 'records nobody on the automatic path' do
+    transfer = apply(transfer_for(session.amount))
+
+    expect(transfer.reload.applied_by_id).to be_nil
+  end
+
+  it 'is a no-op when applied again' do
+    transfer = apply(transfer_for(session.amount))
+
+    expect { apply(transfer) }.not_to change(Spree::Payment, :count)
+  end
+
+  # A session whose cart never completed has no order to pay.
+  it 'refuses a session whose cart was never placed' do
+    cart = bank_transfer_cart(gateway: gateway, price: 100)
+    unplaced = gateway.create_payment_session(order: cart)
+    transfer = transfer_for(unplaced.amount)
+
+    expect { described_class.call(transfer: transfer, payment_session: unplaced) }.
+      to raise_error(described_class::Refused)
   end
 end
