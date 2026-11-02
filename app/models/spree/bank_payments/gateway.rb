@@ -325,9 +325,8 @@ module Spree
 
       # Strip a trailing .0 on whole numbers (3 -> "3") but keep fractional
       # precision (2.5 -> "2.5") -- percent.to_i would silently round 2.5% down
-      # to "2%" in customer-facing copy. Shared by ApplyDiscount's adjustment
-      # label and the checkout/instructions partials so no caller reintroduces
-      # the truncation bug.
+      # to "2%" in customer-facing copy. Shared by the discount label, the
+      # quote and the instructions emails, so none reintroduces the truncation.
       def formatted_discount_percent
         percent = preferred_discount_percent.to_d
         percent == percent.to_i ? percent.to_i.to_s : percent.to_s('F')
