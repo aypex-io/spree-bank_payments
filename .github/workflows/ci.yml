@@ -50,3 +50,15 @@ jobs:
         run: bundle exec rake test_app
       - name: Run specs
         run: bundle exec rspec --format progress
+
+  # Branch protection requires a check named "Tests". The matrix reports one
+  # check per Ruby/Spree pair, so this job gives the protection rule a single
+  # result: it passes only when every matrix job passed.
+  tests-summary:
+    name: Tests
+    if: always()
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every matrix job to pass
+        run: test "${{ needs.tests.result }}" = "success"
