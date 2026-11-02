@@ -13,8 +13,10 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::TransfersController, type: :
     create(:bank_transfer_incoming_transfer, { payment_method_id: gateway.id }.merge(attributes))
   end
 
+  # A placed order big enough to take the session's payment: Spree refuses
+  # a payment larger than the order total.
   def placed_session(amount: 25.00, **attributes)
-    order = create(:order, state: 'complete', currency: 'GBP', store: store)
+    order = create(:completed_order_with_totals, currency: 'GBP', line_items_price: amount, store: store)
     create(:bank_transfer_payment_session,
            { order: order, payment_method: gateway, amount: amount, currency: 'GBP' }.merge(attributes))
   end
@@ -109,6 +111,76 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::TransfersController, type: :
       get :suggestions, params: { id: transfer(amount: 25.00, reference_raw: 'NOTHING').prefixed_id }, as: :json
 
       expect(json_response['data'].first['order']['number']).to eq(session.order.number)
+    end
+  end
+
+  describe 'POST create' do
+    let(:typed) do
+      { payment_method_id: gateway.prefixed_id, amount: '25.00', currency: 'GBP',
+        payer_name: 'Jane Doe', reference: 'ACME-NOTHING', occurred_at: '2026-11-02' }
+    end
+
+    def record(overrides = {})
+      post :create, params: typed.merge(overrides), as: :json
+    end
+
+    it 'applies an exact match at once' do
+      session = placed_session(amount: 25.00)
+
+      record(reference: session.reference)
+
+      expect(json_response['state']).to eq('applied')
+    end
+
+    it 'queues anything else' do
+      record
+
+      expect(json_response['state']).to eq('unmatched')
+    end
+
+    it 'answers 201' do
+      record
+
+      expect(response).to have_http_status(:created)
+    end
+
+    it 'records nothing twice when the form is resubmitted' do
+      2.times { record }
+
+      expect([json_response['already_recorded'], Spree::BankPayments::IncomingTransfer.count]).to eq([true, 1])
+    end
+
+    it 'refuses an amount that is not positive' do
+      record(amount: '0.00')
+
+      expect(json_response.dig('error', 'details').keys).to include('amount')
+    end
+
+    it "refuses another store's payment method" do
+      other = create(:bank_transfer_gateway, store: create(:store))
+
+      record(payment_method_id: other.prefixed_id)
+
+      expect(json_response.dig('error', 'details').keys).to include('payment_method_id')
+    end
+
+    it 'refuses a JSON number for the amount' do
+      record(amount: 25)
+
+      expect(json_response.dig('error', 'code')).to eq('invalid_money_format')
+    end
+  end
+
+  context 'with read_bank_payments only' do
+    include_context 'API v3 Admin with custom permissions'
+
+    let(:custom_permissions) { %w[read_bank_payments] }
+
+    it 'may not record a transfer' do
+      post :create, params: { payment_method_id: gateway.prefixed_id, amount: '25.00', currency: 'GBP',
+                              reference: 'ACME-X', occurred_at: '2026-11-02' }, as: :json
+
+      expect(response).to have_http_status(:forbidden)
     end
   end
 

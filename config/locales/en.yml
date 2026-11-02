@@ -1,4 +1,8 @@
 en:
+  activemodel:
+    errors:
+      messages:
+        must_be_store_bank_transfer: "must be one of this store's bank transfer payment methods"
   spree:
     permissions_catalog:
       resources:
