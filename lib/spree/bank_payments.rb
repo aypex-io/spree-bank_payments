@@ -19,6 +19,16 @@ module Spree
       'spree_bank_payments_'
     end
 
+    # Recalculates a purchase's totals, which re-runs the adjusters and so
+    # writes or removes the bank transfer discount. Spree recalculates on item
+    # and address changes, never on a payment method being chosen.
+    #
+    # @param purchase [Spree::Cart, Spree::Order]
+    # @return [void]
+    def self.recalculate!(purchase)
+      purchase.recalculate_totals!
+    end
+
     # Every STI type name that counts as one of this gem's gateways.
     #
     # `ApplyDiscount#bank_transfer?` tests with `is_a?`, which matches
