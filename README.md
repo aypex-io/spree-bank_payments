@@ -1,11 +1,16 @@
 # spree-bank_payments
 
-Bank transfer checkout for Spree 5.6+, with pluggable reconciliation of
+Bank transfer checkout for Spree 6, with pluggable reconciliation of
 incoming payments.
+
+The major version tracks Spree's: 6.x supports Spree 6. Spree 5.6 stays on
+5.3.x, on the `5-3-stable` branch. Upgrading from 5.3: see
+[docs/upgrading-5-to-6.md](docs/upgrading-5-to-6.md).
 
 ## Requirements
 
-PostgreSQL. The gem uses `jsonb`, partial unique indexes, and `pg_trgm`.
+- Spree `~> 6.0` and Ruby 3.3 or newer.
+- PostgreSQL. The gem uses `jsonb`, partial unique indexes, and `pg_trgm`.
 
 ## Installation
 
@@ -15,7 +20,7 @@ gem 'spree-bank_payments'
 
 ```bash
 bundle install
-bin/rails g spree:bank_transfer:install
+bin/rails g spree:bank_payments:install
 ```
 
 The generator copies the migrations and then asks whether to run them. Pass
@@ -23,7 +28,8 @@ The generator copies the migrations and then asks whether to run them. Pass
 
 ## Configuration
 
-Add a Bank Transfer payment method in the Spree admin and set:
+Add a **Bank transfer** payment method in the Spree dashboard (its API type
+is `bank_transfer`) and set:
 
 | Preference | Purpose |
 |---|---|
@@ -32,7 +38,42 @@ Add a Bank Transfer payment method in the Spree admin and set:
 | `expiry_days` | Days before an unpaid order is cancelled and restocked |
 | `discount_percent` | Percentage off `item_total` for paying by transfer |
 | `poll_interval_minutes` | How often the reconciler polls; drives the health gate |
-| `account_*` | **Deprecated.** Pre-5.2 flat bank details. On upgrade these are folded automatically into one offered `BankAccount` for the store's default currency (see below) — do not set them on a fresh 5.2+ install; use the bank accounts screen instead. |
+
+The pre-5.2 flat `account_*` preferences are hidden from the dashboard. A
+store upgrading from 5.1 has them folded into one offered `BankAccount` for
+the store's default currency by the 5.2 migration.
+
+## Checkout through the Store API
+
+Spree 6 has no Rails storefront; the gem's checkout runs through the Store
+API, as a payment session:
+
+1. **The buyer picks bank transfer.** The storefront creates a payment
+   session: `POST /api/v3/store/carts/:cart_id/payment_sessions` with the
+   payment method's id. The response's `external_data.bank_transfer` is the
+   quote: `reference`, `amount` (with the discount applied), `currency`,
+   `expires_at`, `discount_percent` and `bank_details`. The cart's totals now
+   include the discount. Creating another bank transfer session replaces the
+   previous one.
+2. **The buyer places the order.** The storefront completes the session
+   (`PATCH .../payment_sessions/:id/complete`), which re-quotes the cart and
+   leaves a pending payment carrying the reference, then completes the cart
+   (`POST /api/v3/store/carts/:cart_id/complete`). Spree places the order
+   unpaid: its `payment_status` is `authorized`.
+3. **The confirmation page shows how to pay.** Every bank transfer payment,
+   on the cart and on the order (`GET /api/v3/store/orders/:id`), carries a
+   `bank_transfer` field with the same quote. The payment method itself
+   carries `bank_transfer.discount_percent` and `expiry_days`, for the
+   checkout to advertise before the buyer chooses.
+
+If the buyer switches to another payment method, bank transfer is released
+before Spree sizes the other method's session or payment: its session is
+cancelled and the discount comes off, so the other method charges the full
+total.
+
+Spree holds dispatch of an unpaid bank transfer order (its "not paid for
+yet" rule) unless staff force it, and the payment is captured when the
+transfer is reconciled, never on dispatch.
 
 ## Bank accounts and currencies
 
@@ -51,8 +92,9 @@ every order regardless of currency.
   wrong hides the details the customer actually needed, costing them a
   bounced transfer or a correspondent fee with no explanation. Let them
   choose; they know where they bank.
-- **Admin checklist:** the bank accounts screen under the payment method
-  lets an admin toggle at most one *offered* account per currency. This is
+- **Staff choose the offered account:** at most one account per currency
+  can be *offered*, and only a person sets it (`account.update!(offered: true)`
+  from a console until the dashboard plugin ships). This is
   enforced by a partial unique database index
   (`index_bp_bank_accounts_on_pm_and_currency_offered`), not just a form
   validation — a second offered row for the same currency cannot exist,
@@ -71,11 +113,11 @@ every order regardless of currency.
   currency, in which case availability is kept so that order can still be
   paid. This is easy to reach by accident: **the first sync leaves every
   account unchecked**, so bank transfer is unavailable in every currency
-  until an admin offers at least one account. The admin screen states this
-  plainly.
+  until someone offers at least one account.
 - **Two sync triggers:**
-  1. A **"Sync from &lt;provider&gt;"** button in the payment method admin,
-     which always shows a diff for confirmation before applying it.
+  1. **A person asks for it.** `SyncAccounts.new(payment_method:).plan`
+     returns the diff to confirm, and `#apply!` applies it (the dashboard
+     plugin's sync button, once it ships).
   2. **Consent re-approval**, for providers whose credentials need periodic
      re-authorisation (e.g. an OAuth consent that expires every ~90 days).
      A provider gem can call `SyncAccounts.new(payment_method:).apply!(additive_only: true)`
@@ -90,7 +132,7 @@ every order regardless of currency.
   immutable, because changing what a customer was told after the fact
   makes a dispute unwinnable.
 - **Soft-deleted accounts are not resurrected by sync.** `BankAccount` is
-  `acts_as_paranoid`; deleting one from the admin is a soft delete, so a
+  `acts_as_paranoid`; deleting one is a soft delete, so a
   session that already quoted it keeps rendering the coordinates. If a
   later sync reports the same provider account again, it is **not**
   silently recreated — it's surfaced as `skipped` in the sync diff, visible
@@ -103,7 +145,7 @@ every order regardless of currency.
   hand every customer the same IBAN and separate the payers by reference
   alone. A provider reports this through `AccountData#pooled` (default
   `false`, so a provider that never sets it behaves exactly as before) and
-  it is shown as a **Pooled** badge on the bank accounts screen. It changes
+  it is recorded on the account as `pooled`. It changes
   nothing about auto-apply — that has always required an exact normalized
   reference match, on every account — but it changes how a human must read
   the unmatched queue. Suggestions there are ranked partly on fuzzy
@@ -167,55 +209,39 @@ is skipped too; both appear under `skipped` in the sync diff.
 See "Writing a reconciler" below for the full contract, including the shared
 example group that exercises this method's return type.
 
-## The admin queue and the manual workflow
+## Applying transfers by hand
 
-The gem adds a **Bank transfers** entry to the Spree admin sidebar, pointing
-at `/admin/bank_transfers`. That screen is the operational heart of the gem:
+A transfer that matches exactly (reference, amount and currency, against a
+single open session on a placed, unpaid order) is applied automatically and
+the order reads `paid`. Anything else is kept as an unmatched
+`Spree::BankPayments::IncomingTransfer` for a person to decide.
 
-- **The unmatched queue** (`/admin/bank_transfers`) lists every observed
-  transfer that hasn't been matched to an order, with suggested sessions
-  ranked by exact amount first and fuzzy payer-name similarity second. Apply
-  a suggestion in one click, or ignore the transfer with a reason.
-- **Record a received transfer** (`/admin/bank_transfers/new`) is how money
-  gets into the system when you're not running a provider integration. This
-  is **required reading if you use the default `manual` reconciler**: it has
-  nothing to poll and no webhook, so this form is the only way a transfer can
-  ever be recorded. You enter the payment method, amount, currency, payer
-  name, the reference as the customer quoted it, and the date received; the
-  entry then goes through exactly the same matching path as a
-  provider-delivered transfer. An exact match (reference, amount, currency,
-  against a single open session on an unpaid order) applies immediately and
-  marks the order paid. Anything else lands in the queue above.
+The 5.x Rails admin screens (the unmatched queue, the bank accounts
+screen and the order panel) do not exist on Spree 6, which has no Rails
+admin. They return as a dashboard plugin. Until then, the decisions are
+made from a console:
 
-  Submitting the same form twice is safe: the transfer's identity is derived
-  from what you typed, so a resubmission is recognised as the same transfer
-  and nothing is credited twice.
+```ruby
+# Record a transfer received outside any provider integration. With the
+# default `manual` reconciler this is the only way one is recorded.
+data = Spree::BankPayments::TransferData.new(
+  provider: 'manual', provider_transaction_id: 'bank-statement-2026-11-02-1',
+  amount: BigDecimal('97.00'), currency: 'GBP', reference: 'ACME-7Q4X2',
+  payer_name: 'Jane Doe', occurred_at: Time.current, raw: {}
+)
+Spree::BankPayments::IngestTransfer.new(payment_method: gateway, transfer_data: data).call
 
-  The same derivation has a flip side. Two genuinely separate transfers that
-  match on every recorded field — payment method, amount, currency, reference,
-  payer name and date received — are treated as one, and only the first is
-  credited. If a customer really did send the same amount twice on the same day,
-  record the second with something that distinguishes it (the payer name exactly
-  as it appears on that transfer, for instance) so it is not collapsed into the
-  first.
+# Rank the open sessions an unmatched transfer could belong to.
+Spree::BankPayments::SuggestMatches.new(transfer: transfer).call
 
-- **Applying to a mismatched order** takes two deliberate steps. The first
-  click is refused with both amounts spelled out; only then does an explicit
-  "Yes — apply … anyway" control appear for that specific pairing, behind a
-  confirmation dialog. A mismatch is credited for the amount that actually
-  arrived, so the order lands in `balance_due`/`credit_owed` rather than a
-  false `paid`.
-
-### The order panel partial
-
-`spree/bank_payments/admin/_order_panel` renders the bank-transfer state for
-a single order — reference, amount, status, expiry, and the matched transfer
-if there is one. The gem does **not** inject it anywhere; render it from your
-admin order view where it makes sense for your store:
-
-```erb
-<%= render 'spree/bank_payments/admin/order_panel', order: @order %>
+# Apply it. A transfer for a different amount is credited for what arrived,
+# so the order reads partially_paid or overcharged, never a false paid.
+Spree::BankPayments::ApplyTransfer.call(transfer: transfer, payment_session: session, applied_by: admin)
 ```
+
+Recording the same transfer twice is safe: a transfer's identity is its
+provider and provider transaction id, so a second record is the same row and
+nothing is credited twice.
 
 ## Scheduling
 
@@ -267,75 +293,82 @@ decision, not a reconciliation.
 
 ## Events
 
-The gem never sends notifications directly — it publishes to
-`Spree::Events`, and subscribers decide what to do:
+The gem never sends notifications directly. It publishes Spree events, and
+subscribers decide what to do. Every event is declared, as Spree 6 requires.
 
-| Event | Fired when |
-|---|---|
-| `bank_transfer.instructions_ready` | A payment session is created and the customer needs the reference/bank details |
-| `bank_transfer.reminder_due` | An unpaid session is approaching its expiry deadline |
-| `bank_transfer.expired` | `ExpireSessionsJob` cancels an unpaid order |
-| `bank_transfer.session_superseded` | An open session is closed because its order was already paid another way — the order is left alone |
-| `bank_transfer.reconciler_unhealthy` | The [health gate](#the-health-gate) trips — `ExpireSessionsJob` declined to cancel anything because the reconciler is stale |
-| `bank_transfer.reconciler_health.unhealthy` | `PollJob` reports a *transition* into `:transient` or `:consent_revoked` — and at most hourly while it persists. Carries `status`, `reason` and `consecutive_failures` (see [`#health`](#health)) |
-| `bank_transfer.reconciler_health.recovered` | The same reporter sees health return to `:ok` |
-| `bank_transfer.expiry_failed` | `ExpireSessionsJob` hits an error cancelling a specific session |
+| Event | Fired when | Webhooks |
+|---|---|---|
+| `bank_transfer.instructions_ready` | The order is placed, and the buyer needs the reference and bank details | yes |
+| `bank_transfer.reminder_due` | An unpaid placed order is approaching its deadline | yes |
+| `bank_transfer.expired` | `ExpireSessionsJob` cancels an unpaid order | yes |
+| `bank_transfer.session_superseded` | An open session is closed because its order was already paid another way; the order is left alone | yes |
+| `bank_transfer.reconciler_unhealthy` | The [health gate](#the-health-gate) trips: `ExpireSessionsJob` declined to cancel anything because the reconciler is stale | never |
+| `bank_transfer.reconciler_health.unhealthy` | `PollJob` reports a *transition* into `:transient` or `:consent_revoked`, and at most hourly while it persists. Carries `status`, `reason` and `consecutive_failures` (see [`#health`](#health)) | never |
+| `bank_transfer.reconciler_health.recovered` | The same reporter sees health return to `:ok` | never |
+| `bank_transfer.expiry_failed` | `ExpireSessionsJob` hits an error for a payment method, or Spree refuses to cancel a specific order | never |
+
+The four operational events carry reconciler error text, so they are
+declared `webhook: false`: no webhook endpoint receives them, not even one
+subscribed to `*`. Subscribe to them in the application and route them
+somewhere a person will see them.
 
 The two `reconciler` events are not the same signal:
 `reconciler_unhealthy` says the expiry job stood down, while the
 `reconciler_health.*` pair reports the reconciler's own state and is what
 decides whether checkout offers bank transfer at all.
 
-Payloads contain serializable primitives only — never AR objects — because
-subscribers may run async via ActiveJob. See
-`Spree::PaymentSessions::BankTransfer#notification_payload` for the exact
-shape. Subscribe with `Spree::Events.subscribe('bank_transfer.*', MyHandler)`
-or to individual event names.
+The customer-facing payload (`Spree::PaymentSessions::BankTransfer#notification_payload`)
+has string keys and prefixed ids, like Spree's own: `payment_session_id`,
+`order_id`, `order_number`, `order_email`, `reference`, `amount`, `currency`,
+`expires_at`, `discount_percent` and `bank_details`. A store that emails from
+webhooks has everything it needs without another API call.
 
-A bundled mailer subscribes to `instructions_ready` and `reminder_due` as one
-optional subscriber among possibly several. Disable it with:
+Subscribe with a `Spree::Subscriber` added to `Spree.subscribers` in an
+`after_initialize` block. Do not call `Spree::Events.subscribe` from
+`to_prepare`: Spree activates `Spree.subscribers` only while its registry is
+empty, so a block subscribed first leaves every one of Spree's own
+subscribers unregistered.
+
+A bundled mailer, `Spree::BankPayments::InstructionsMailerSubscriber`, emails
+the buyer on `instructions_ready` and `reminder_due`. Disable it with:
 
 ```ruby
 Spree::BankPayments::Config.disable_default_mailer = true
 ```
 
-Stores that deliver mail another way — for example a storefront webhook
-handler that calls out to Postmark/Resend/etc. rather than using
-ActionMailer — should disable the default mailer and subscribe to the events
-directly instead of fighting the bundled one.
+Stores that deliver mail another way, for example a storefront webhook
+handler that sends through an email API, should disable the default mailer
+and handle the events instead.
 
 ## Tax, and stacking with promotions
 
-The discount is applied as one `Spree::Adjustment` per **line item** (sourced
-from the payment method, not a promotion action), allocated proportionally to
-each line's amount and reconciled with largest-remainder rounding so the parts
-sum to exactly `-(item_total * discount_percent / 100)` — to the cent.
+The discount is written as one `manual` `Spree::Discount` per **line item**,
+tagged `metadata.source = "spree_bank_payments"`, while bank transfer is the
+cart's selected payment. Shares are allocated in proportion to each line's
+amount with Spree's largest-remainder apportionment, in the currency's minor
+units, so they sum to exactly `-(item_total * discount_percent / 100)` and a
+yen discount stays in whole yen.
 
-Because they are line-item adjustments, they reach Spree's
-`taxable_adjustment_total`, so **recorded tax falls with the discount**. On a
-tax-inclusive (VAT) store a 3% discount on a £100 line reduces recorded VAT
-from £16.67 to £16.17. The pre-5.1 order-level adjustment did not do this — the
-customer paid less while the order still recorded tax on the undiscounted
-price. That is fixed.
+Spree counts every discount row into a line's taxable basis, so **recorded
+tax falls with the discount**: on a tax-inclusive market a 3% discount on a
+£100 line reduces recorded VAT from £16.67 to £16.17.
 
-**The discount stacks with promotions.** It is deliberately not a competing
-promotion: Spree picks a single winner among competing promo adjustments, but
-this is a separate concession for paying by transfer, so it is never marked
-ineligible and never makes a promotion ineligible. A 20% promotion plus a 3%
-transfer discount is 23% off. Set `discount_percent` with that in mind.
+**The discount stacks with promotions.** It is deliberately not a promotion:
+Spree keeps one winning promotion per group, but this is a separate
+concession for paying by transfer. A 20% promotion plus a 3% transfer
+discount is 23% off. Set `discount_percent` with that in mind.
 
-Base is always `item_total`, never `order.total` — the discount never applies
-to shipping or tax.
+The base is always `item_total`, never the order total: the discount never
+applies to delivery or tax. Once the order is placed its money is frozen, and
+the rows are copied onto it.
 
-## The instructions partial ships no CSS
+## Showing the instructions
 
-`spree/bank_payments/_order_instructions` renders the payment reference and
-bank details with no styling of its own. Making the reference visually
-prominent — the single most impactful thing you can do for match rates — is
-the host store's responsibility. Customers who don't notice or don't copy
-the reference correctly produce transfers reconciliation can't match
-automatically, which means manual admin work. Style it like the most
-important line on the page, because for a bank-transfer checkout, it is.
+The storefront renders the payment reference and bank details from
+`payments[].bank_transfer`. Making the reference visually prominent is the
+single most effective thing a store can do for match rates: a buyer who does
+not notice or copy it produces a transfer reconciliation cannot match
+automatically, which means work for a person.
 
 ## Writing a reconciler
 

@@ -2,6 +2,100 @@
 
 All notable changes to this project are documented in this file.
 
+## 6.0.0
+
+Spree 6 support. The major version tracks Spree's, so 6.x supports Spree 6.
+Spree 5.6 stays on 5.3.x, on the `5-3-stable` branch. To upgrade, see
+[docs/upgrading-5-to-6.md](docs/upgrading-5-to-6.md).
+
+### Requirements
+
+- Spree `~> 6.0` and Ruby 3.3 or newer. The 5.x releases do not install on
+  Spree 6.
+- The `spree_admin` dependency is gone: Spree 6 has no Rails admin.
+
+### Removed
+
+- **The Rails admin screens**: the unmatched-transfers queue, the "record a
+  received transfer" form, the bank accounts screen, the sidebar entry, the
+  order panel partial and the payment method configuration guide. They return
+  as a dashboard plugin. Until then, exact matches still apply automatically,
+  and staff decide the rest from a console (see the README).
+- **The Rails storefront partials** (the checkout payment partial and
+  `spree/bank_payments/_order_instructions`). A storefront reads the quote
+  from the Store API instead.
+- `Gateway#bank_details` (deprecated in 5.2.0), `#method_type`,
+  `#description_partial_name`, `#configuration_guide_partial_name` and
+  `#auto_capture?`.
+- `Spree::BankPayments.gateway_type_names` and `.gateway_scope`.
+
+### Checkout
+
+- **The gateway is session-based** and its API type is `bank_transfer`.
+  Creating a payment session quotes the cart: a fresh reference, the amount
+  due after the discount, the deadline and the bank details, under
+  `external_data.bank_transfer`, which a client cannot write. Completing the
+  session re-quotes, then leaves a pending payment carrying the reference, so
+  Spree places the order unpaid (`payment_status` `authorized`).
+- **Changing the cart after choosing bank transfer** re-quotes on completion,
+  and the pending payment follows the new total.
+- **Switching to another payment method releases bank transfer first.**
+  Before the Store API creates another method's session or payment, the bank
+  transfer session is cancelled, its payment voided and the discount
+  recalculated away, so the other method charges the full total.
+- **Spree holds dispatch of an unpaid bank transfer order** unless staff
+  force it: the gateway captures at checkout, so its pending payment does not
+  count as money staff have taken charge of collecting. `authorize` and
+  `purchase` refuse; money moves only when a transfer is reconciled.
+- **The Store API shows the quote**: a bank transfer payment, on the cart and
+  on the order, carries a `bank_transfer` field with the reference, amount,
+  deadline and bank details. The payment method carries
+  `bank_transfer.discount_percent` and `expiry_days`.
+
+### Discount
+
+- Written as one `manual` `Spree::Discount` per line item, found by
+  `metadata.source = "spree_bank_payments"`, through an adjuster registered in
+  `Spree.adjusters`. The figures do not change: 3% off a 20% VAT-inclusive
+  100.00 line records 16.17 VAT, and a 20% promotion plus 3% is 23%. Shares
+  round to the currency's own minor unit.
+
+### Reconciliation and expiry
+
+- A transfer settles through `Spree.payment_capture_workflow`, so Spree
+  records the capture and publishes `payment.captured`.
+- **Only placed orders reconcile automatically.** A transfer quoting a
+  reference from a checkout that was never placed queues for a person, and is
+  never suggested; it is not used to place the cart.
+- `parse_webhook_event` ingests the transfer and returns `nil`, so Spree's
+  webhook workflow has nothing to settle a second time.
+- An unpaid placed order past its deadline is cancelled through
+  `Spree.order_cancel_workflow`, which releases its stock and voids the
+  payment, with a staff note. A cancel Spree refuses leaves the session open
+  and reports `bank_transfer.expiry_failed`. A session whose checkout was
+  never placed is expired silently.
+- Settled means `paid` or `overcharged`, Spree 6's names for 5.x's `paid` and
+  `credit_owed`.
+
+### Events and email
+
+- **Instructions are sent when the order is placed**, not when the session is
+  created, and the payment window starts then. Reminders go only to placed
+  orders.
+- Every event is declared. The operational ones
+  (`reconciler_unhealthy`, `expiry_failed`, `reconciler_health.*`) are
+  declared `webhook: false`: their payloads carry error text.
+- Events are published under the gateway's store, so they reach webhook
+  endpoints from the background jobs too.
+- **Payloads use string keys and prefixed ids** (`ps_...`, `pm_...`), and the
+  customer-facing payload adds `order_id`, `discount_percent` and
+  `bank_details`. A subscriber reading `payload[:payment_session_id]` must
+  read `payload['payment_session_id']`.
+- The default mailer is `Spree::BankPayments::InstructionsMailerSubscriber`,
+  registered through `Spree.subscribers`. 5.x subscribed blocks from
+  `to_prepare`, which on Spree 6 stopped every one of Spree's own subscribers
+  from registering. `InstructionsMailer` takes the session's prefixed id.
+
 ## 5.3.0
 
 ### Upgrading from 5.2.0
