@@ -13,6 +13,9 @@ import { Badge } from '@spree/dashboard-ui/ui/badge'
 import { Link } from '@tanstack/react-router'
 import { money, TransferStateBadge } from './components/shared'
 import en from './locales/en.json'
+import { OrderBankTransferCard } from './slots/order-bank-transfer-card'
+import { PaymentMethodActions } from './slots/payment-method-actions'
+import { PaymentMethodGuide } from './slots/payment-method-guide'
 import type { IncomingTransfer } from './types'
 
 i18n.addResourceBundle('en', 'translation', en, true, true)
@@ -107,6 +110,21 @@ defineDashboardPlugin({
         },
       ],
     },
+  },
+  // The slots' contexts are typed by the host pages; `defineDashboardPlugin`
+  // erases them, hence the casts. Slot names are literal strings: the
+  // helpers that build them live in the app shell, which a plugin must not
+  // import.
+  slots: {
+    'order.form_sidebar': [
+      { id: 'bank-transfer', component: OrderBankTransferCard as never, position: 250 },
+    ],
+    'payment_method.guide.bank_transfer': [
+      { id: 'bank-transfer-guide', component: PaymentMethodGuide as never, position: 100 },
+    ],
+    'payment_method.actions.bank_transfer': [
+      { id: 'bank-transfer-accounts', component: PaymentMethodActions as never, position: 100 },
+    ],
   },
 })
 

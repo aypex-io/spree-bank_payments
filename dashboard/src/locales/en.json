@@ -76,7 +76,19 @@
         "sync_skipped": "Skipped",
         "sync_nothing": "Everything is already up to date.",
         "sync_apply": "Apply changes",
-        "synced_done": "Accounts synced. Offer an account per currency for customers to be quoted it."
+        "synced_done": "Accounts synced. Offer an account per currency for customers to be quoted it.",
+        "add": "Add account",
+        "add_title": "Add a bank account",
+        "add_description": "Enter the details customers pay into, exactly as your bank shows them.",
+        "detail_label": "Name for these details",
+        "detail_label_placeholder": "UK payments, International…",
+        "beneficiary_name": "Account holder",
+        "field_label": "Field",
+        "field_value": "Value",
+        "add_field": "Add field",
+        "remove_field": "Remove",
+        "save": "Save account",
+        "created": "Account added. Offer it for customers to be quoted it."
       },
       "order_card": {
         "title": "Bank transfer",
@@ -110,7 +122,8 @@
         "no_offered_account": "No account is offered in any currency, so customers are not offered bank transfer. Open Bank accounts and offer one per currency.",
         "offered_in": "Offered in {{currencies}}",
         "accounts_link": "Bank accounts"
-      }
+      },
+      "copy": "Copy"
     }
   }
 }
