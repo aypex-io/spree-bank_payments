@@ -14,6 +14,10 @@ module Spree
       # capture workflow declined.
       class Refused < StandardError; end
 
+      # The transfer was already applied: a double click, or two staff at
+      # once. A Refused, so IngestTransfer's replay handling is unchanged.
+      class AlreadyApplied < Refused; end
+
       UNSETTLED_PAYMENT_STATUSES = %w[checkout pending].freeze
 
       def self.call(...)
@@ -27,16 +31,21 @@ module Spree
       end
 
       # @return [Spree::BankPayments::IncomingTransfer]
-      # @raise [Refused]
+      # @raise [AlreadyApplied] the transfer is applied already
+      # @raise [Refused] the order is not placed or not payable, or Spree's
+      #   capture workflow declined
       def call
         order = payment_session.order
         raise Refused, I18n.t('spree.bank_payments.errors.order_not_placed') if order.nil?
 
         ActiveRecord::Base.transaction do
           order.with_lock do
-            # Re-read under the lock: a racing transfer or a person may have
-            # paid the session, or cancelled the order, since it was matched.
-            return transfer if transfer.reload.applied?
+            # Lock the transfer too, then re-read it: two requests applying
+            # one transfer to different orders hold different order locks, so
+            # only this one makes the second wait and then refuse. Always
+            # order before transfer, so the two locks never deadlock.
+            transfer.lock!
+            raise AlreadyApplied, I18n.t('spree.bank_payments.errors.already_applied') if transfer.applied?
 
             ensure_payable!(order)
             payment = payment_session.reload_payment || payment_session.find_or_create_payment!

@@ -63,10 +63,32 @@ RSpec.describe Spree::BankPayments::ApplyTransfer do
     expect(transfer.reload.applied_by_id).to be_nil
   end
 
-  it 'is a no-op when applied again' do
+  # A second request for a transfer already applied (a double click, or two
+  # staff at once) is refused, so the caller can say so, not report success.
+  it 'refuses a transfer that is already applied' do
     transfer = apply(transfer_for(session.amount))
 
-    expect { apply(transfer) }.not_to change(Spree::Payment, :count)
+    expect { apply(transfer) }.to raise_error(described_class::AlreadyApplied)
+  end
+
+  it 'captures nothing more when applied again' do
+    transfer = apply(transfer_for(session.amount))
+
+    expect do
+      apply(transfer)
+    rescue described_class::AlreadyApplied
+      nil
+    end.not_to change(Spree::Payment, :count)
+  end
+
+  # The caller's copy can be stale: another request applied the transfer
+  # after this one loaded it. The transfer is re-read under its own lock.
+  it 'refuses a stale copy of a transfer another request has applied' do
+    transfer = transfer_for(session.amount)
+    stale = Spree::BankPayments::IncomingTransfer.find(transfer.id)
+    apply(transfer)
+
+    expect { apply(stale) }.to raise_error(described_class::AlreadyApplied)
   end
 
   # A session whose cart never completed has no order to pay.
