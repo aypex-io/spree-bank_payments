@@ -66,79 +66,63 @@ RSpec.describe Spree::BankPayments::Gateway do
     expect(gateway.reconciler_state).to eq(existing)
   end
 
-  it 'exposes the offered account details for the store currency via the deprecated shim' do
-    create(:bank_payments_bank_account, payment_method: gateway, currency: Spree::Config[:currency], offered: true)
-
-    detail_sets = gateway.bank_details
-
-    expect(detail_sets.map(&:label)).to eq(['UK payments', 'International'])
-    expect(detail_sets.first.beneficiary_name).to eq('Example Store Ltd')
-    expect(detail_sets.first.fields).to eq(
-      [['Sort code', '04-00-75'], ['Account number', '12345678']]
-    )
-    expect(detail_sets.last.fields).to eq(
-      [['IBAN', 'GB00REVO00000000000000'], ['BIC', 'REVOGB21']]
-    )
+  it 'reports its API type as bank_transfer' do
+    expect(described_class.api_type).to eq('bank_transfer')
   end
 
-  # Spree::PaymentMethod#method_type defaults to `type.demodulize.downcase`
-  # ("gateway" for any Gateway subclass), and spree_storefront renders
-  # "spree/checkout/payment/#{method_type}" during checkout -- NOT
-  # description_partial_name or configuration_guide_partial_name, which are
-  # separate lookups used only by the admin payment-method screens. Without
-  # this override the checkout partial is unreachable in a real store even
-  # though a view spec rendering it by explicit path stays green, so this
-  # asserts the actual linkage: the value method_type returns really is the
-  # directory our partial lives in.
-  it 'overrides method_type so spree_storefront finds the checkout partial' do
-    expect(gateway.method_type).to eq('spree_bank_payments')
-
-    partial_path = Spree::BankPayments::Engine.root.join(
-      'app', 'views', 'spree', 'checkout', 'payment',
-      "_#{gateway.method_type}.html.erb"
-    )
-
-    expect(File.exist?(partial_path)).to be(true)
+  it 'requires a payment session' do
+    expect(gateway.session_required?).to be(true)
   end
 
-  describe '#create_payment_session' do
-    # item_total 100, discount 3% (factory default) -> discounted total 97.00.
-    # order_with_line_items has no item_total transient (see
-    # apply_discount_spec.rb): use the real line_items_price transient.
-    let(:order) { create(:order_with_line_items, line_items_price: 100.00, shipment_cost: 0) }
+  # Spree holds dispatch of an order whose pending payments all defer
+  # capture (Fulfillments::Fulfill#ensure_ready_to_hand_over). Capturing "at
+  # checkout" keeps an unpaid bank transfer order out of that exemption.
+  it 'captures at checkout so Spree holds dispatch until it is paid' do
+    gateway.store.update!(preferred_capture_method: 'on_dispatch')
 
-    it 'quotes the discounted total, not the undiscounted one' do
-      session = gateway.create_payment_session(order: order)
+    expect(gateway.resolved_capture_method).to eq('checkout')
+  end
 
-      expect(session.amount).to eq(order.reload.total)
-      expect(session.amount).to eq(97.00)
+  it 'refuses to purchase outside a payment session' do
+    expect(gateway.purchase(Spree::Money.new(10, currency: 'GBP'), nil, {}).success?).to be(false)
+  end
+
+  it 'refuses to authorize outside a payment session' do
+    expect(gateway.authorize(Spree::Money.new(10, currency: 'GBP'), nil, {}).success?).to be(false)
+  end
+
+  # Only ApplyTransfer captures, once the reconciler has seen the money.
+  it 'confirms a capture without contacting anyone' do
+    expect(gateway.capture(Spree::Money.new(10, currency: 'GBP'), 'ACME-7Q4X2', {}).success?).to be(true)
+  end
+
+  it 'offers staff no capture action' do
+    expect(gateway.actions).to eq(%w[void])
+  end
+
+  it 'hides the legacy single-account preferences from the dashboard' do
+    keys = described_class.preference_schema.map { |entry| entry[:key].to_s }
+
+    expect(keys).not_to include('account_iban')
+  end
+
+  describe '#available_for_order?' do
+    let(:cart) { create(:cart_with_line_items, currency: 'GBP') }
+
+    it 'is available for a cart in a currency with an offered account' do
+      create(:bank_payments_bank_account, payment_method: gateway, currency: 'GBP', offered: true)
+
+      expect(gateway.available_for_order?(cart)).to be(true)
     end
 
-    it 'does not move the goalposts once a payment is later created (reconciliation-time hook is a no-op)' do
-      create(:bank_payments_bank_account, payment_method: gateway, currency: order.currency, offered: true)
-
-      session = gateway.create_payment_session(order: order)
-      quoted_amount = session.amount
-
-      create(:payment, order: order, payment_method: gateway, amount: quoted_amount)
-
-      expect(order.reload.total).to eq(quoted_amount)
+    it 'is unavailable for a cart in a currency with no offered account' do
+      expect(gateway.available_for_order?(cart)).to be(false)
     end
 
-    it 'publishes bank_transfer.instructions_ready for the persisted session, after creation' do
-      published_payload = nil
-      allow(Spree::Events).to receive(:publish) do |name, payload|
-        published_payload = payload if name == 'bank_transfer.instructions_ready'
-      end
+    it 'stays available for a cart that already holds a session in its currency' do
+      create(:bank_transfer_payment_session, cart: cart, payment_method: gateway, currency: 'GBP')
 
-      session = gateway.create_payment_session(order: order)
-
-      # Proves the event fires after Spree::PaymentSessions::BankTransfer.create!
-      # (not before, and not against some other record): the payload's id must
-      # match the id of the session actually returned/persisted.
-      expect(session.id).to be_present
-      expect(published_payload).not_to be_nil
-      expect(published_payload[:payment_session_id]).to eq(session.id)
+      expect(gateway.available_for_order?(cart)).to be(true)
     end
   end
 end
