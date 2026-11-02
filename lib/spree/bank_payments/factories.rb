@@ -12,6 +12,7 @@ FactoryBot.define do
 
   factory :bank_transfer_gateway, class: 'Spree::BankPayments::Gateway' do
     name { 'Bank Transfer' }
+    store { Spree::Store.find_by(default: true) || association(:store) }
     preferences do
       {
         reconciler: 'manual',
@@ -26,8 +27,12 @@ FactoryBot.define do
     end
   end
 
+  # Owned by a cart unless the spec passes an order: during checkout the
+  # session belongs to the cart, and Spree moves it onto the order when the
+  # cart completes. A session has exactly one owner.
   factory :bank_transfer_payment_session, class: 'Spree::PaymentSessions::BankTransfer' do
-    association :order, factory: :order
+    order { nil }
+    cart { order.nil? ? association(:cart, currency: currency) : nil }
     association :payment_method, factory: :bank_transfer_gateway
     amount { 25.00 }
     currency { 'GBP' }

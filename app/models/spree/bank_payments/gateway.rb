@@ -1,17 +1,28 @@
 module Spree
   module BankPayments
     class Gateway < ::Spree::PaymentMethod
+      # Amounts arrive as Spree::Money (amount and currency), not hundredths.
+      self.accepts_money_amounts = true
+
+      # Deliberately a plain string with a registry validation, not `choices:`.
+      # Spree enforces choices on every Admin API write of the preferences,
+      # and the dashboard sends them all, so a gateway whose provider gem has
+      # been uninstalled could no longer be deactivated -- the recovery
+      # #reconciler_registered exists to keep open.
       preference :reconciler, :string, default: 'manual'
       preference :reference_prefix, :string, default: ''
       preference :expiry_days, :integer, default: 3
       preference :discount_percent, :decimal, default: 0
       preference :poll_interval_minutes, :integer, default: 15
 
-      preference :account_name, :string
-      preference :account_iban, :string
-      preference :account_bic, :string
-      preference :account_sort_code, :string
-      preference :account_number, :string
+      # The single-account preferences 5.2.0 replaced with BankAccount records.
+      # Still declared so migration 20260817000004 can read what a 5.1 store
+      # stored, and internal so the dashboard never offers them.
+      preference :account_name, :string, internal: true
+      preference :account_iban, :string, internal: true
+      preference :account_bic, :string, internal: true
+      preference :account_sort_code, :string, internal: true
+      preference :account_number, :string, internal: true
 
       validate :discount_percent_within_bounds
       validate :expiry_days_positive
@@ -22,8 +33,39 @@ module Spree
                foreign_key: :payment_method_id,
                dependent: :destroy
 
+      # The type the Store and Admin APIs send, and the suffix of the
+      # dashboard's payment-method slots. Without it Spree would derive
+      # "gateway" from the class's leaf name.
+      def self.api_type
+        'bank_transfer'
+      end
+
+      def self.display_name
+        I18n.t('spree.bank_payments.gateway_name')
+      end
+
+      def self.description
+        I18n.t('spree.bank_payments.gateway_description')
+      end
+
       def payment_source_class
         nil
+      end
+
+      # The storefront creates a session when the buyer picks bank transfer
+      # (the quote) and completes it when they place the order. Spree's
+      # direct-payment endpoint refuses session-required methods.
+      def session_required?
+        true
+      end
+
+      # Pinned, whatever the store or this record says. A pending payment on a
+      # method that defers capture counts as ready to ship
+      # (Spree::Fulfillments::Fulfill#ensure_ready_to_hand_over); capturing "at
+      # checkout" keeps an unpaid bank transfer order held until it is paid,
+      # and stops dispatch from trying to capture money that has not arrived.
+      def resolved_capture_method
+        'checkout'
       end
 
       def source_required?
@@ -62,14 +104,29 @@ module Spree
         session
       end
 
-      def auto_capture?
-        false
-      end
-
       # Money moves when the reconciler confirms it, never on an admin's click
       # in the payments screen. Void remains available for abandoning an order.
       def actions
         %w[void]
+      end
+
+      # Spree's checkout processing calls these for a payment it has to take
+      # at completion. A bank transfer is never taken that way: the payment
+      # exists only through a payment session, and is paid when the
+      # reconciler sees the money.
+      def authorize(*)
+        refuse_outside_session
+      end
+
+      def purchase(*)
+        refuse_outside_session
+      end
+
+      # Called only by ApplyTransfer, through Spree's capture workflow, once
+      # the reconciler has already seen the money arrive. There is nobody to
+      # ask, so it confirms.
+      def capture(_amount, response_code, _gateway_options = {})
+        ::Spree::PaymentResponse.new(true, '', {}, { authorization: response_code })
       end
 
       def can_void?(payment)
@@ -82,23 +139,6 @@ module Spree
 
       def cancel(*)
         ::Spree::PaymentResponse.new(true, '', {}, {})
-      end
-
-      # Spree::PaymentMethod#method_type defaults to `type.demodulize.downcase`
-      # ("gateway" for this class), which is what spree_storefront uses to look
-      # up "spree/checkout/payment/#{method_type}" -- without this override the
-      # checkout partial is never found in a real store, even though it renders
-      # fine when a spec renders it by explicit path.
-      def method_type
-        'spree_bank_payments'
-      end
-
-      def description_partial_name
-        'spree_bank_payments'
-      end
-
-      def configuration_guide_partial_name
-        'spree_bank_payments'
       end
 
       # Memoized because #health calls it twice and #health runs on every
@@ -192,6 +232,7 @@ module Spree
         account.detail_sets.select(&:usable?)
       end
 
+      # @param order [Spree::Cart, Spree::Order] the purchase being paid for
       def available_for_order?(order)
         return false unless super
 
@@ -221,21 +262,6 @@ module Spree
         )
       end
 
-      # @deprecated Use #bank_details_for(currency).
-      def bank_details
-        message =
-          'Spree::BankPayments::Gateway#bank_details is deprecated; ' \
-          'use #bank_details_for(currency).'
-
-        if defined?(Spree::Deprecation)
-          Spree::Deprecation.warn(message)
-        else
-          Rails.logger.warn(message)
-        end
-
-        bank_details_for(Spree::Config[:currency])
-      end
-
       # Strip a trailing .0 on whole numbers (3 -> "3") but keep fractional
       # precision (2.5 -> "2.5") -- percent.to_i would silently round 2.5% down
       # to "2%" in customer-facing copy. Shared by ApplyDiscount's adjustment
@@ -247,6 +273,10 @@ module Spree
       end
 
       private
+
+      def refuse_outside_session
+        ::Spree::PaymentResponse.new(false, I18n.t('spree.bank_payments.errors.session_required'), {}, {})
+      end
 
       # The first-ever concurrent checkout render on a gateway is a real race:
       # two requests both miss the SELECT, both INSERT, and the unique index on
