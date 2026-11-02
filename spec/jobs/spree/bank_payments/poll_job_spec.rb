@@ -93,7 +93,7 @@ RSpec.describe Spree::BankPayments::PollJob do
   it 'ingests every transfer the reconciler returns' do
     data = Spree::BankPayments::TransferData.new(
       provider: 'test', provider_transaction_id: 'TX-77', amount: 10.00,
-      currency: 'GBP', reference: 'TKF-ZZZZZZ', payer_name: 'Jane Doe',
+      currency: 'GBP', reference: 'ACME-ZZZZZZ', payer_name: 'Jane Doe',
       occurred_at: Time.current, raw: {}
     )
     allow_any_instance_of(Spree::BankPayments::Reconcilers::Manual).

@@ -5,9 +5,9 @@ RSpec.describe Spree::PaymentSessions::BankTransfer do
 
   it 'stores a normalized copy of the reference on save' do
     session = create(:bank_transfer_payment_session,
-                     payment_method: payment_method, external_id: 'TKF-7Q4X2')
+                     payment_method: payment_method, external_id: 'ACME-7Q4X2')
 
-    expect(session.external_id_normalized).to eq('TKF7Q4X2')
+    expect(session.external_id_normalized).to eq('ACME7Q4X2')
   end
 
   it 'includes pending and processing sessions in the open scope' do

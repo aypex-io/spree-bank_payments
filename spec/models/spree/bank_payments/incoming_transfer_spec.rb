@@ -3,10 +3,10 @@ require 'spec_helper'
 RSpec.describe Spree::BankPayments::IncomingTransfer do
   describe '.normalize_reference' do
     it 'upcases, strips non-alphanumerics, and folds Crockford ambiguities' do
-      expect(described_class.normalize_reference('tkf-7q4x2')).to eq('TKF7Q4X2')
-      expect(described_class.normalize_reference(' TKF 7Q4X2 ')).to eq('TKF7Q4X2')
-      expect(described_class.normalize_reference('TKF/7Q4X2')).to eq('TKF7Q4X2')
-      expect(described_class.normalize_reference('TKFO7I4L2')).to eq('TKF071412')
+      expect(described_class.normalize_reference('acme-7q4x2')).to eq('ACME7Q4X2')
+      expect(described_class.normalize_reference(' ACME 7Q4X2 ')).to eq('ACME7Q4X2')
+      expect(described_class.normalize_reference('ACME/7Q4X2')).to eq('ACME7Q4X2')
+      expect(described_class.normalize_reference('ACMEO7I4L2')).to eq('ACME071412')
     end
 
     it 'returns an empty string for nil' do
