@@ -131,3 +131,10 @@ export interface AmountMismatchDetails {
   session_amount: string
   currency: string
 }
+
+/** One of the store's bank transfer payment methods, as recording a transfer lists them. */
+export interface BankTransferMethod {
+  id: string
+  name: string
+  active: boolean
+}

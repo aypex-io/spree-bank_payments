@@ -1,4 +1,4 @@
-import { adminClient, mapSpreeErrorsToForm, PageHeader } from '@spree/dashboard-core'
+import { mapSpreeErrorsToForm, PageHeader } from '@spree/dashboard-core'
 import {
   Button,
   Card,
@@ -32,11 +32,13 @@ export function RecordTransferPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const storeId = useStoreId()
+  // The gem's own list, not Spree's payment methods endpoint: that one needs
+  // the store's settings, which a role that records transfers may not have.
   const { data: methods } = useQuery({
     queryKey: ['bank_payments', 'payment_methods', storeId],
-    queryFn: () => adminClient.paymentMethods.list({ limit: 100 }),
+    queryFn: () => bankPaymentsClient.paymentMethods(),
   })
-  const bankMethods = (methods?.data ?? []).filter((method) => method.type === 'bank_transfer')
+  const bankMethods = methods?.data ?? []
   const form = useForm<RecordTransferParams>({
     defaultValues: {
       payment_method_id: '',

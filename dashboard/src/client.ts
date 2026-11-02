@@ -8,6 +8,7 @@ import { adminClient } from '@spree/dashboard-core'
 import type {
   BankAccount,
   BankAccountParams,
+  BankTransferMethod,
   GatewayHealth,
   IncomingTransfer,
   OrderBankTransfer,
@@ -22,6 +23,9 @@ export type ListParams = Record<string, string | number | boolean | (string | nu
 const base = '/bank_payments'
 
 export const bankPaymentsClient = {
+  /** The store's bank transfer payment methods, under the bank transfers permission. */
+  paymentMethods: () =>
+    adminClient.request<{ data: BankTransferMethod[] }>('GET', `${base}/payment_methods`),
   transfers: {
     list: (params?: ListParams) =>
       adminClient.request<PaginatedResponse<IncomingTransfer>>('GET', `${base}/transfers`, {
