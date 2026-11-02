@@ -12,6 +12,8 @@ Rails.application.config.after_initialize do
   # subscribers unregistered. Spree activates this list after every engine's
   # after_initialize and again after each code reload. Names, not classes,
   # so Spree resolves the reloaded constant.
+  Spree::BankPayments.register_api_fields!
+
   %w[
     Spree::BankPayments::OrderPlacedSubscriber
     Spree::BankPayments::InstructionsMailerSubscriber
