@@ -1,6 +1,9 @@
 module Spree
   module PaymentSessions
     class BankTransfer < Spree::PaymentSession
+      # Where the quote lives in external_data, which the Store API returns
+      # whole. Clients may write their own keys; never this one.
+      QUOTE_KEY = 'bank_transfer'.freeze
       # `-> { with_deleted }`: BankAccount is acts_as_paranoid, and without
       # this a soft-deleted account (an admin decision, see the destroy
       # action) resolves to nil here -- silently blanking the coordinates an
@@ -32,6 +35,32 @@ module Spree
 
       def reference
         external_id
+      end
+
+      # What the buyer is told to pay: the reference, the exact amount, the
+      # deadline and the bank details.
+      #
+      # @return [Hash{String => Object}]
+      def quote
+        {
+          'reference' => reference,
+          'amount' => Spree::Money::Rounding.format(amount, currency),
+          'currency' => currency,
+          'expires_at' => expires_at&.iso8601,
+          'discount_percent' => payment_method.formatted_discount_percent,
+          'bank_details' => bank_detail_sets.map { |set| set.to_h.deep_stringify_keys }
+        }
+      end
+
+      # Re-reads the amount due from the owner and stores the quote. A
+      # bookkeeping write, so it publishes no payment_session.updated.
+      #
+      # @return [void]
+      def requote!
+        self.amount = Spree::Money::Rounding.to_currency(owner.amount_due_at_checkout, currency)
+        self.external_data = external_data.to_h.merge(QUOTE_KEY => quote)
+
+        Spree::Events.disable_lifecycle { save! }
       end
 
       # The coordinates this session was actually quoted against -- the single
@@ -74,7 +103,7 @@ module Spree
           'order_number' => order&.number,
           'order_email' => order&.email,
           'reference' => reference,
-          'amount' => Spree::Money::Rounding.to_currency(amount, currency).to_s('F'),
+          'amount' => Spree::Money::Rounding.format(amount, currency),
           'currency' => currency,
           'expires_at' => expires_at&.iso8601,
           'discount_percent' => payment_method.formatted_discount_percent,

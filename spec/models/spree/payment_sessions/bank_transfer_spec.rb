@@ -13,7 +13,7 @@ RSpec.describe Spree::PaymentSessions::BankTransfer do
   it 'includes pending and processing sessions in the open scope' do
     open_session = create(:bank_transfer_payment_session, payment_method: payment_method)
     closed_session = create(:bank_transfer_payment_session, payment_method: payment_method)
-    closed_session.complete!
+    closed_session.complete
 
     expect(described_class.open).to include(open_session)
     expect(described_class.open).not_to include(closed_session)

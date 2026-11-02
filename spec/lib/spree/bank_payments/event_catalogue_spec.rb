@@ -48,6 +48,11 @@ RSpec.describe 'Spree::BankPayments event catalogue' do
         to include('reference', 'amount', 'currency', 'expires_at', 'order_email', 'bank_details')
     end
 
+    # The way Spree's APIs write money: exactly the currency's decimals.
+    it 'writes the amount with the currency decimals' do
+      expect(session.notification_payload['amount']).to eq('97.00')
+    end
+
     it 'uses string keys' do
       expect(session.notification_payload.keys).to all(be_a(String))
     end

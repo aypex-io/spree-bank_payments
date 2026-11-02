@@ -76,32 +76,80 @@ module Spree
         ::Spree::PaymentSessions::BankTransfer
       end
 
+      # Quotes a bank transfer when the buyer picks it: a fresh reference, the
+      # amount due and the bank details to pay into. Any earlier open bank
+      # transfer session on the purchase is released first, so only one
+      # reference is ever live per purchase.
+      #
+      # The caller's amount is ignored: the quote is what a transfer will be
+      # matched against, so it is always computed here, after the discount.
+      # Instructions are not sent yet; that happens when the order is placed.
+      #
+      # @param order [Spree::Cart, Spree::Order] the purchase (a cart during
+      #   checkout; Spree's argument name predates the split)
+      # @param external_data [Hash] client data, kept apart from the quote
+      # @return [Spree::PaymentSessions::BankTransfer] unsaved, with errors,
+      #   when it is invalid
       def create_payment_session(order:, amount: nil, external_data: {})
-        # The quoted amount must already reflect the discount. The Payment
-        # after_create hook cannot be relied on here: in this gem the payment
-        # is often not created until reconciliation (Task 6's
-        # find_or_create_payment!), which would quote the customer the
-        # undiscounted total and then move the goalposts once funds arrive.
-        # ApplyDiscount is idempotent, so the later reconciliation-time hook
-        # becomes a harmless no-op rather than a second discount.
-        ApplyDiscount.call(order: order, payment_method: self)
+        purchase = order
+        ReleaseSelection.call(purchase: purchase)
 
-        account = offered_account_for(order.currency)
-
-        session = ::Spree::PaymentSessions::BankTransfer.create!(
-          order: order,
+        session = payment_session_class.new(
+          owner: purchase,
           payment_method: self,
-          amount: amount || order.total_minus_store_credits,
-          currency: order.currency,
+          amount: purchase.amount_due_at_checkout,
+          currency: purchase.currency,
           external_id: ReferenceGenerator.new(payment_method: self).generate,
-          external_data: external_data,
+          external_data: client_data(external_data),
           expires_at: preferred_expiry_days.to_i.days.from_now,
-          bank_account_id: account&.id
+          bank_account_id: offered_account_for(purchase.currency)&.id
         )
+        return session unless session.save
 
-        session.publish_bank_transfer_event('bank_transfer.instructions_ready')
-
+        Spree::BankPayments.recalculate!(purchase)
+        session.requote!
         session
+      end
+
+      # Re-quotes the session against the purchase as it is now, keeping its
+      # reference. The client's quote is never stored.
+      #
+      # @return [Spree::PaymentSessions::BankTransfer]
+      def update_payment_session(payment_session:, amount: nil, external_data: {})
+        payment_session.external_data = payment_session.external_data.to_h.merge(client_data(external_data))
+        Spree::BankPayments.recalculate!(payment_session.owner)
+        payment_session.requote!
+        payment_session
+      end
+
+      # The buyer is placing the order. Re-quotes, then leaves a pending
+      # payment keyed by the reference, which covers the purchase so Spree
+      # places it unpaid. The session stays open (processing) until a transfer
+      # is applied to it.
+      #
+      # Must not complete the purchase: Carts::Complete does that.
+      #
+      # @return [Spree::PaymentSessions::BankTransfer]
+      def complete_payment_session(payment_session:, params: {})
+        Spree::BankPayments.recalculate!(payment_session.owner)
+        payment_session.requote!
+        payment_session.process if payment_session.pending?
+
+        payment = payment_session.settle_payment!(captured: false)
+        resize_unsettled(payment, payment_session.amount)
+        payment_session
+      end
+
+      # Spree retires the sessions an order left unused when it is placed. A
+      # session that carries the order's payment is never unused.
+      #
+      # @return [Boolean] whether the session was canceled
+      def cancel_payment_session(payment_session:)
+        # Reloaded: settlement creates the payment through the owner, so a
+        # session instance that looked before then still caches "none".
+        return false if payment_session.reload_payment.present?
+
+        payment_session.cancel
       end
 
       # Money moves when the reconciler confirms it, never on an admin's click
@@ -286,6 +334,20 @@ module Spree
       end
 
       private
+
+      # A completed session's payment is created once, for the amount quoted
+      # then. A buyer who goes back, changes the cart and places the order
+      # again must owe what the cart now totals.
+      def resize_unsettled(payment, amount)
+        return if payment.nil? || payment.amount == amount
+        return unless %w[checkout pending].include?(payment.status)
+
+        payment.update!(amount: amount)
+      end
+
+      def client_data(external_data)
+        external_data.to_h.stringify_keys.except(Spree::PaymentSessions::BankTransfer::QUOTE_KEY)
+      end
 
       def refuse_outside_session
         ::Spree::PaymentResponse.new(false, I18n.t('spree.bank_payments.errors.session_required'), {}, {})
