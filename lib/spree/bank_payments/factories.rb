@@ -11,7 +11,7 @@ FactoryBot.define do
   end
 
   factory :bank_transfer_gateway, class: 'Spree::BankPayments::Gateway' do
-    name { 'Bank Transfer' }
+    sequence(:name) { |n| "Bank Transfer #{n}" }
     store { Spree::Store.find_by(default: true) || association(:store) }
     preferences do
       {

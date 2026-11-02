@@ -1,7 +1,6 @@
 require 'spree_core'
 require 'spree/bank_payments/version'
 require 'spree/bank_payments/configuration'
-require 'spree/bank_payments/subscribers'
 require 'spree/bank_payments/events'
 require 'spree/bank_payments/engine'
 

@@ -52,6 +52,27 @@ module Spree
         }
       end
 
+      # Whether the instructions for this session have gone out. Spree can
+      # replay order.placed, and one order is one set of instructions.
+      def instructions_sent?
+        external_data.to_h['instructions_sent_at'].present?
+      end
+
+      # Restarts the payment window from now, when the order is placed, and
+      # records that the instructions are being sent. The quote's deadline
+      # moves with it. A bookkeeping write, so no payment_session.updated.
+      #
+      # @return [void]
+      def start_payment_window!
+        self.expires_at = payment_method.preferred_expiry_days.to_i.days.from_now
+        self.external_data = external_data.to_h.merge(
+          'instructions_sent_at' => Time.current.iso8601,
+          QUOTE_KEY => quote
+        )
+
+        Spree::Events.disable_lifecycle { save! }
+      end
+
       # Re-reads the amount due from the owner and stores the quote. A
       # bookkeeping write, so it publishes no payment_session.updated.
       #

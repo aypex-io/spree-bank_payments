@@ -1,9 +1,9 @@
-<h1><%= Spree.t('bank_payments.reference') %>: <%= @session.reference %></h1>
+<h1><%= I18n.t('spree.bank_payments.reference') %>: <%= @session.reference %></h1>
 
-<p><%= Spree.t('bank_payments.reference_help') %></p>
+<p><%= I18n.t('spree.bank_payments.reference_help') %></p>
 
 <p>
-  <strong><%= Spree.t('bank_payments.amount_to_transfer') %>:</strong>
+  <strong><%= I18n.t('spree.bank_payments.amount_to_transfer') %>:</strong>
   <%= @session.money.to_s %>
 </p>
 
@@ -12,7 +12,7 @@
 
   <ul>
     <% if set.beneficiary_name.present? %>
-      <li><%= Spree.t('bank_payments.beneficiary') %>: <%= set.beneficiary_name %></li>
+      <li><%= I18n.t('spree.bank_payments.beneficiary') %>: <%= set.beneficiary_name %></li>
     <% end %>
 
     <%# Label/value pairs, rendered generically: bank coordinates are not
@@ -24,4 +24,4 @@
   </ul>
 <% end %>
 
-<p><%= Spree.t('bank_payments.dispatch_note') %></p>
+<p><%= I18n.t('spree.bank_payments.dispatch_note') %></p>

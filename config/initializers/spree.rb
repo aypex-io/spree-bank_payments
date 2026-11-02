@@ -5,20 +5,25 @@ Rails.application.config.after_initialize do
   # `config.spree.adjusters` in its own after_initialize, which runs before
   # this one and would wipe an earlier registration.
   Spree::BankPayments.register_discount_adjuster!
+
+  # Through Spree.subscribers, never Spree::Events.subscribe: activate!
+  # does nothing once the registry holds any subscription, so a block
+  # subscribed before Spree activates would leave every one of Spree's own
+  # subscribers unregistered. Spree activates this list after every engine's
+  # after_initialize and again after each code reload. Names, not classes,
+  # so Spree resolves the reloaded constant.
+  %w[
+    Spree::BankPayments::OrderPlacedSubscriber
+    Spree::BankPayments::InstructionsMailerSubscriber
+  ].each do |subscriber|
+    Spree.subscribers << subscriber unless Spree.subscribers.include?(subscriber)
+  end
 end
 
-# Reconciler registration, and the default mailer's event subscriptions,
-# live in `to_prepare`, not `after_initialize`, because `Reconcilers::Base`
-# autoloads from app/models: Zeitwerk re-creates the class (and its
-# @registry class-instance variable) on every code reload in development,
-# but `after_initialize` only runs once at boot. `to_prepare` re-runs on
-# every reload, so both registries survive. Re-registering is safe: the
-# reconciler registry is a plain string-keyed hash, so registering the same
-# key twice is a no-op, and Spree::BankPayments.register_default_mailer_subscribers!
-# is itself idempotent (see lib/spree/bank_payments/subscribers.rb) — it
-# guards each Spree::Events.subscribe call with `registry.registered?` so
-# `to_prepare` firing repeatedly cannot stack duplicate subscriptions and
-# send duplicate mail.
+# Registrations that must be repeated after every code reload, because
+# Zeitwerk re-creates the classes they hold (and the reconciler registry, a
+# class-instance variable). `after_initialize` runs once at boot; `to_prepare`
+# runs then and on every reload. Each call here is idempotent.
 #
 # The payment-method line above stays in `after_initialize`:
 # `config.spree.payment_methods` is a plain Array, so running that line on
@@ -43,8 +48,4 @@ Rails.application.config.to_prepare do
   # Swaps in the freshly autoloaded adjuster after a code reload. A no-op on
   # first boot, before core has seeded the array.
   Spree::BankPayments.register_discount_adjuster!
-
-  # Subscribers must re-register per reload too: spree_core's own to_prepare hook
-  # calls Spree::Events.reset!, which drops Proc-based subscribers registered at boot.
-  Spree::BankPayments.register_default_mailer_subscribers! unless Spree::BankPayments::Config.disable_default_mailer
 end

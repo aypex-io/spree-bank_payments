@@ -12,6 +12,17 @@ module BankTransferCheckout
     create(:cart_ready_for_delivery, line_items_price: price, currency: currency, shipping_cost: 0)
   end
 
+  # Puts the cart's items on the shelf, so its fulfillment can be handed
+  # over rather than held as backordered.
+  def stock!(cart, quantity: 10)
+    cart.line_items.each do |line_item|
+      Spree::StockLocation.order(:id).first.restock(line_item.variant, quantity)
+    end
+    cart.rebuild_fulfillments!
+    cart.recalculate_totals!
+    cart
+  end
+
   # @return [Array(Spree::Order, Spree::PaymentSessions::BankTransfer)]
   def place_with_bank_transfer(cart, gateway:)
     session = gateway.create_payment_session(order: cart)
@@ -26,4 +37,5 @@ end
 
 RSpec.configure do |config|
   config.include BankTransferCheckout
+  config.include ActiveSupport::Testing::TimeHelpers
 end
