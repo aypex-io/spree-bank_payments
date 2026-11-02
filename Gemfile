@@ -2,22 +2,15 @@ source 'https://rubygems.org'
 
 gemspec
 
-# `gemspec` only requires the gem's own lib entrypoint (which requires
-# spree_core); it does not auto-`require` runtime dependencies pulled in
-# transitively. spree_admin's admin routes/controllers are only loaded when
-# the gem is actually required, so list it explicitly -- otherwise every
-# admin route (edit_admin_payment_method_path etc.) is silently absent in
-# the dummy app, matching the convention in other Spree extensions.
-gem 'spree_admin'
-
 gem 'pg'
 gem 'propshaft'
+gem 'webmock'
 
-# Same gap as spree_admin above: spree_dev_tools depends on this transitively
-# (for `assigns` in controller specs) but never requires it, and it's a
-# Railtie -- requiring it after boot is too late to hook in. List it
-# explicitly so Bundler.require pulls it in before Rails.application
-# initializes.
-group :test do
-  gem 'rails-controller-testing'
-end
+# Constrained here because the gemspec does not declare it; Bundler would
+# otherwise resolve 0.6.3, which is broken on Spree 6.
+gem 'spree_dev_tools', '~> 1.0'
+
+# CI runs a matrix of Spree versions. SPREE_VERSION pins one (e.g. "6.0.0");
+# left unset, Bundler resolves the newest release the gemspec allows.
+spree_version = ENV.fetch('SPREE_VERSION', '')
+gem 'spree', spree_version unless spree_version.empty?

@@ -28,10 +28,9 @@ Gem::Specification.new do |s|
   s.files = Dir['{app,config,db,lib}/**/*', 'LICENSE', 'Rakefile', 'README.md', 'CHANGELOG.md']
   s.require_path = 'lib'
 
-  spree_opts = '>= 5.6.0'
-  s.add_dependency 'spree', spree_opts
-  s.add_dependency 'spree_admin', spree_opts
-
-  s.add_development_dependency 'spree_dev_tools'
-  s.add_development_dependency 'webmock'
+  # The major version tracks Spree's: 6.x supports Spree 6. Spree 5.6 stays on
+  # 5.3.x, on the 5-3-stable branch. Spree 6 has no Rails admin (spree_admin
+  # stops at 5.6), so there is no admin dependency: the dashboard screens ship
+  # as a separate dashboard plugin package against this gem's Admin API.
+  s.add_dependency 'spree', '~> 6.0'
 end

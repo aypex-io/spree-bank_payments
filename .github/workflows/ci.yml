@@ -12,8 +12,14 @@ concurrency:
 
 jobs:
   tests:
-    name: Tests
+    name: Tests (Ruby ${{ matrix.ruby }}, Spree ${{ matrix.spree || 'latest' }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ['3.3', '4.0']
+        # The oldest Spree the gemspec allows, and the newest release (empty).
+        spree: ['6.0.0', '']
     services:
       postgres:
         image: postgres:16
@@ -31,11 +37,12 @@ jobs:
       DATABASE_URL: postgres://postgres:password@localhost:5432/spree_test
       RAILS_ENV: test
       CI: true
+      SPREE_VERSION: ${{ matrix.spree }}
     steps:
       - uses: actions/checkout@v6
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3'
+          ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
       - name: Install libvips
         run: sudo apt-get update && sudo apt-get install -y libvips
