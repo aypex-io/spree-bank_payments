@@ -99,15 +99,6 @@ module Spree
               [:bank_account, { payment_session: :order }]
             end
 
-            # Unmatched unless the request filters on state: the queue is
-            # what staff open this for.
-            def ransack_params
-              filters = super
-              filters = filters.to_h.stringify_keys
-              filters['state_eq'] = 'unmatched' unless filters.keys.any? { |key| key.start_with?('state_') }
-              filters
-            end
-
             def authorize_resource!(resource = @resource, action = action_name.to_sym)
               super(resource, %w[apply ignore].include?(action.to_s) ? :update : action)
             end
