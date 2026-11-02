@@ -171,10 +171,125 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::TransfersController, type: :
     end
   end
 
+  describe 'applying and ignoring' do
+    # A 100.00 cart placed by bank transfer at 3% off: the order owes 97.00.
+    let(:checkout_gateway) { create(:bank_transfer_gateway, store: store) }
+    let(:placed) do
+      store
+      place_with_bank_transfer(bank_transfer_cart(gateway: checkout_gateway, price: 100), gateway: checkout_gateway)
+    end
+    let(:order) { placed.first }
+    let(:session) { placed.last }
+
+    def unmatched(amount: session.amount, **attributes)
+      create(:bank_transfer_incoming_transfer,
+             { payment_method_id: checkout_gateway.id, amount: amount, currency: session.currency,
+               reference_raw: 'MISTYPED' }.merge(attributes))
+    end
+
+    def apply(transfer, **params)
+      post :apply, params: { id: transfer.prefixed_id, payment_session_id: session.prefixed_id }.merge(params), as: :json
+    end
+
+    describe 'POST apply' do
+      it 'applies a transfer to the session staff chose' do
+        apply(unmatched)
+
+        expect(order.reload.payment_status).to eq('paid')
+      end
+
+      it 'records who applied it' do
+        transfer = unmatched
+        apply(transfer)
+
+        expect(transfer.reload.applied_by_id).to eq(admin_user.id)
+      end
+
+      it 'refuses a mismatched amount without confirmation' do
+        apply(unmatched(amount: BigDecimal('90.00')))
+
+        expect(json_response.dig('error', 'code')).to eq('amount_mismatch')
+      end
+
+      it 'says both amounts when it refuses a mismatch' do
+        apply(unmatched(amount: BigDecimal('90.00')))
+
+        expect(json_response.dig('error', 'details', 'session_amount')).to eq('97.00')
+      end
+
+      it 'applies a mismatched amount once confirmed' do
+        apply(unmatched(amount: BigDecimal('90.00')), confirm_mismatch: true)
+
+        expect(order.reload.payment_status).to eq('partially_paid')
+      end
+
+      it "refuses another gateway's session" do
+        apply(unmatched(payment_method_id: create(:bank_transfer_gateway, store: store).id))
+
+        expect(json_response.dig('error', 'code')).to eq('gateway_mismatch')
+      end
+
+      it "answers 404 for another store's session" do
+        other_order = create(:completed_order_with_totals, store: create(:store), currency: 'GBP')
+        other = create(:bank_transfer_payment_session, order: other_order, payment_method: checkout_gateway)
+
+        post :apply, params: { id: unmatched.prefixed_id, payment_session_id: other.prefixed_id }, as: :json
+
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it 'refuses to apply twice' do
+        transfer = unmatched
+        apply(transfer)
+        apply(transfer)
+
+        expect(json_response.dig('error', 'code')).to eq('already_applied')
+      end
+
+      it 'captures once when applied twice' do
+        transfer = unmatched
+        2.times { apply(transfer) }
+
+        expect(Spree::PaymentCaptureEvent.where(payment: order.payments).count).to eq(1)
+      end
+    end
+
+    describe 'POST ignore' do
+      it 'ignores with a reason' do
+        transfer = unmatched
+        post :ignore, params: { id: transfer.prefixed_id, reason: 'Refunded to the payer' }, as: :json
+
+        expect(transfer.reload.state).to eq('ignored')
+      end
+
+      it 'refuses to ignore without a reason' do
+        post :ignore, params: { id: unmatched.prefixed_id, reason: ' ' }, as: :json
+
+        expect(json_response.dig('error', 'details').keys).to include('reason')
+      end
+
+      it 'refuses to ignore an applied transfer' do
+        transfer = unmatched
+        apply(transfer)
+        post :ignore, params: { id: transfer.prefixed_id, reason: 'Oops' }, as: :json
+
+        expect(json_response.dig('error', 'code')).to eq('already_applied')
+      end
+    end
+  end
+
   context 'with read_bank_payments only' do
     include_context 'API v3 Admin with custom permissions'
 
     let(:custom_permissions) { %w[read_bank_payments] }
+
+    it 'may not apply a transfer' do
+      transfer = create(:bank_transfer_incoming_transfer, payment_method_id: gateway.id)
+
+      post :apply, params: { id: transfer.prefixed_id, payment_session_id: 'ps_nope' }, as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
 
     it 'may not record a transfer' do
       post :create, params: { payment_method_id: gateway.prefixed_id, amount: '25.00', currency: 'GBP',
