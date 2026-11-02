@@ -1,27 +1,38 @@
 import { SpreeError } from '@spree/admin-sdk'
 import { PageHeader, useResourceKey, useResourceMutation } from '@spree/dashboard-core'
-import { RelativeTime, useConfirm } from '@spree/dashboard-ui'
-import { Alert, AlertDescription } from '@spree/dashboard-ui/ui/alert'
-import { Badge } from '@spree/dashboard-ui/ui/badge'
-import { Button } from '@spree/dashboard-ui/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@spree/dashboard-ui/ui/card'
 import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@spree/dashboard-ui/ui/dialog'
-import { Label } from '@spree/dashboard-ui/ui/label'
-import { Textarea } from '@spree/dashboard-ui/ui/textarea'
-import { toastManager } from '@spree/dashboard-ui/ui/toast'
+  Label,
+  RelativeTime,
+  Textarea,
+  toastManager,
+  useConfirm,
+} from '@spree/dashboard-ui'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { bankPaymentsClient } from '../client'
-import { money, TransferStateBadge, useCanManageBankTransfers } from '../components/shared'
+import {
+  money,
+  TransferStateBadge,
+  useCanManageBankTransfers,
+  useStoreId,
+} from '../components/shared'
 import type { AmountMismatchDetails, IncomingTransfer, Suggestion } from '../types'
 import { transfersQueryKey } from './transfers-list'
 
@@ -107,12 +118,13 @@ function TransferFacts({ transfer }: { transfer: IncomingTransfer }) {
 
 function Outcome({ transfer }: { transfer: IncomingTransfer }) {
   const { t } = useTranslation()
+  const storeId = useStoreId()
 
   return (
     <Card>
       <CardContent className="text-sm">
         {transfer.order ? (
-          <Link to="/$storeId/orders/$orderId" params={{ orderId: transfer.order.id } as never}>
+          <Link to="/$storeId/orders/$orderId" params={{ storeId, orderId: transfer.order.id }}>
             {t('admin.bank_payments.transfer.applied_to', { number: transfer.order.number })}
           </Link>
         ) : (
@@ -130,14 +142,13 @@ function Suggestions({ transfer }: { transfer: IncomingTransfer }) {
   const canManage = useCanManageBankTransfers()
   const confirm = useConfirm()
   const navigate = useNavigate()
-  const { storeId } = useParams({ strict: false }) as { storeId: string }
+  const storeId = useStoreId()
   const [ignoring, setIgnoring] = useState(false)
   const { data } = useQuery({
     queryKey: useResourceKey(transfersQueryKey, transfer.id, 'suggestions'),
     queryFn: () => bankPaymentsClient.transfers.suggestions(transfer.id),
   })
-  const backToQueue = () =>
-    navigate({ to: '/$storeId/bank-transfers', params: { storeId } as never })
+  const backToQueue = () => navigate({ to: '/$storeId/bank-transfers', params: { storeId } })
 
   const apply = useResourceMutation({
     mutationFn: (variables: { suggestion: Suggestion; confirm_mismatch?: boolean }) =>
@@ -282,7 +293,7 @@ function IgnoreDialog({
           <DialogTitle>{t('admin.bank_payments.transfer.ignore_title')}</DialogTitle>
           <DialogDescription>{money(transfer.amount, transfer.currency)}</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-2">
+        <DialogBody className="flex flex-col gap-2">
           <Label htmlFor="bank-transfer-ignore-reason">
             {t('admin.bank_payments.transfer.ignore_reason_label')}
           </Label>
@@ -292,7 +303,7 @@ function IgnoreDialog({
             placeholder={t('admin.bank_payments.transfer.ignore_reason_placeholder')}
             onChange={(event) => setReason(event.target.value)}
           />
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button
             disabled={reason.trim() === '' || ignore.isPending}

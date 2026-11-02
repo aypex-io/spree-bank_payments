@@ -1,7 +1,8 @@
 import { formatMoney } from '@spree/admin-sdk'
 import { i18n, usePermissions } from '@spree/dashboard-core'
-import { Badge } from '@spree/dashboard-ui/ui/badge'
-import type { TransferState } from '../types'
+import { Badge } from '@spree/dashboard-ui'
+import { Link, useParams } from '@tanstack/react-router'
+import type { IncomingTransfer, TransferState } from '../types'
 
 /** Money as the admin's language writes it, from the API's decimal string. */
 export function money(amount: string | null | undefined, currency: string): string {
@@ -27,4 +28,28 @@ export function TransferStateBadge({ state }: { state: TransferState }) {
  */
 export function useCanManageBankTransfers(): boolean {
   return usePermissions().permissions.can('update', 'incoming_transfer')
+}
+
+/**
+ * The current store's id, from the `$storeId` every dashboard route sits
+ * under. Links must pass it: the router does not fill it in.
+ */
+export function useStoreId(): string {
+  const { storeId } = useParams({ strict: false }) as { storeId?: string }
+  return storeId ?? ''
+}
+
+/** A transfer's reference, linking to its page. */
+export function TransferReferenceLink({ transfer }: { transfer: IncomingTransfer }) {
+  const storeId = useStoreId()
+
+  return (
+    <Link
+      to="/$storeId/bank-transfers/$transferId"
+      params={{ storeId, transferId: transfer.id }}
+      className="font-medium text-foreground no-underline"
+    >
+      {transfer.reference || '—'}
+    </Link>
+  )
 }

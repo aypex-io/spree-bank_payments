@@ -1,19 +1,23 @@
 import { PageHeader, useResourceKey, useResourceMutation } from '@spree/dashboard-core'
-import { useConfirm } from '@spree/dashboard-ui'
-import { Badge } from '@spree/dashboard-ui/ui/badge'
-import { Button } from '@spree/dashboard-ui/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@spree/dashboard-ui/ui/card'
 import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@spree/dashboard-ui/ui/dialog'
-import { Input } from '@spree/dashboard-ui/ui/input'
-import { Label } from '@spree/dashboard-ui/ui/label'
-import { Switch } from '@spree/dashboard-ui/ui/switch'
+  Input,
+  Label,
+  Switch,
+  useConfirm,
+} from '@spree/dashboard-ui'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -37,6 +41,13 @@ export function AccountsPage({ paymentMethodId }: { paymentMethodId: string }) {
     queryFn: () => bankPaymentsClient.accounts.list(paymentMethodId),
   })
   const accounts = data?.data ?? []
+  // The manual reconciler cannot list accounts, so a sync would always be
+  // refused: offer it only for a provider reconciler, as 5.x did.
+  const { data: health } = useQuery({
+    queryKey: useResourceKey('bank_payment_health', paymentMethodId),
+    queryFn: () => bankPaymentsClient.health(paymentMethodId),
+  })
+  const canSync = health !== undefined && health.reconciler !== 'manual'
 
   return (
     <div className="flex flex-col gap-6">
@@ -49,9 +60,11 @@ export function AccountsPage({ paymentMethodId }: { paymentMethodId: string }) {
               <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
                 {t('admin.bank_payments.accounts.add')}
               </Button>
-              <Button size="sm" onClick={() => setSyncing(true)}>
-                {t('admin.bank_payments.accounts.sync')}
-              </Button>
+              {canSync ? (
+                <Button size="sm" onClick={() => setSyncing(true)}>
+                  {t('admin.bank_payments.accounts.sync')}
+                </Button>
+              ) : null}
             </div>
           ) : null
         }
@@ -228,7 +241,7 @@ function SyncDialog({
           {error ? <DialogDescription>{(error as Error).message}</DialogDescription> : null}
         </DialogHeader>
         {plan ? (
-          <div className="flex flex-col gap-4">
+          <DialogBody className="flex flex-col gap-4">
             {nothing ? (
               <p className="text-sm">{t('admin.bank_payments.accounts.sync_nothing')}</p>
             ) : null}
@@ -236,13 +249,15 @@ function SyncDialog({
             {section(t('admin.bank_payments.accounts.sync_update'), plan.update)}
             {section(t('admin.bank_payments.accounts.sync_deactivate'), plan.deactivate)}
             {section(t('admin.bank_payments.accounts.sync_skipped'), plan.skipped)}
-          </div>
+          </DialogBody>
         ) : null}
-        <DialogFooter>
-          <Button disabled={!plan || nothing || sync.isPending} onClick={() => sync.mutate()}>
-            {t('admin.bank_payments.accounts.sync_apply')}
-          </Button>
-        </DialogFooter>
+        {plan && !nothing ? (
+          <DialogFooter>
+            <Button disabled={sync.isPending} onClick={() => sync.mutate()}>
+              {t('admin.bank_payments.accounts.sync_apply')}
+            </Button>
+          </DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   )
@@ -293,7 +308,7 @@ function AddAccountDialog({
           <DialogTitle>{t('admin.bank_payments.accounts.add_title')}</DialogTitle>
           <DialogDescription>{t('admin.bank_payments.accounts.add_description')}</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
+        <DialogBody className="flex flex-col gap-3">
           <Label htmlFor="bank-account-currency">{t('admin.bank_payments.fields.currency')}</Label>
           <Input
             id="bank-account-currency"
@@ -353,7 +368,7 @@ function AddAccountDialog({
               {t('admin.bank_payments.accounts.add_field')}
             </Button>
           </div>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button
             disabled={currency.length !== 3 || create.isPending}
