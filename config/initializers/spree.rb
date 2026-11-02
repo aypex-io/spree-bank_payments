@@ -1,5 +1,10 @@
 Rails.application.config.after_initialize do
   Rails.application.config.spree.payment_methods << Spree::BankPayments::Gateway
+
+  # Here rather than only in `to_prepare`: spree_core assigns
+  # `config.spree.adjusters` in its own after_initialize, which runs before
+  # this one and would wipe an earlier registration.
+  Spree::BankPayments.register_discount_adjuster!
 end
 
 # Reconciler registration, and the default mailer's event subscriptions,
@@ -22,6 +27,22 @@ Rails.application.config.to_prepare do
   Spree::BankPayments::Reconcilers::Base.register('manual', Spree::BankPayments::Reconcilers::Manual)
 
   Spree::BankPayments.declare_events!
+
+  # Releases bank transfer before the Store API sizes another method's
+  # session or payment. Re-checked per reload: both the controllers and the
+  # module autoload.
+  [
+    Spree::Api::V3::Store::Carts::PaymentSessionsController,
+    Spree::Api::V3::Store::Carts::PaymentsController
+  ].each do |controller|
+    next if controller.ancestors.include?(Spree::BankPayments::ReleaseOnOtherMethod)
+
+    controller.prepend(Spree::BankPayments::ReleaseOnOtherMethod)
+  end
+
+  # Swaps in the freshly autoloaded adjuster after a code reload. A no-op on
+  # first boot, before core has seeded the array.
+  Spree::BankPayments.register_discount_adjuster!
 
   # Subscribers must re-register per reload too: spree_core's own to_prepare hook
   # calls Spree::Events.reset!, which drops Proc-based subscribers registered at boot.

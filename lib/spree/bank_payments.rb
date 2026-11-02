@@ -19,6 +19,27 @@ module Spree
       'spree_bank_payments_'
     end
 
+    ADJUSTER_NAME = 'Spree::BankPayments::Adjusters::Discount'.freeze
+
+    # Adds the discount adjuster to Spree.adjusters, exactly once.
+    #
+    # Called from both hooks in config/initializers/spree.rb: from
+    # `after_initialize`, because spree_core *assigns* the array in its own
+    # after_initialize and would wipe anything registered earlier, and from
+    # `to_prepare`, because the class autoloads from app/models and a code
+    # reload leaves the array holding the stale constant. Matching by name
+    # swaps the fresh class in. Before core has seeded the array it does
+    # nothing; the after_initialize call registers for real.
+    #
+    # @return [void]
+    def self.register_discount_adjuster!
+      adjusters = Rails.application.config.spree.adjusters
+      return if adjusters.blank?
+
+      adjusters.reject! { |adjuster| adjuster.name == ADJUSTER_NAME }
+      adjusters << ADJUSTER_NAME.constantize
+    end
+
     # Recalculates a purchase's totals, which re-runs the adjusters and so
     # writes or removes the bank transfer discount. Spree recalculates on item
     # and address changes, never on a payment method being chosen.
@@ -27,25 +48,6 @@ module Spree
     # @return [void]
     def self.recalculate!(purchase)
       purchase.recalculate_totals!
-    end
-
-    # Every STI type name that counts as one of this gem's gateways.
-    #
-    # `ApplyDiscount#bank_transfer?` tests with `is_a?`, which matches
-    # subclasses, so a store subclassing the gateway HAS the discount applied.
-    # The SQL filters must agree, or those adjustments would be created but
-    # never counted into taxable_adjustment_total (VAT silently unfixed -- the
-    # exact bug 5.1.0 fixes) and never removed on a payment-method switch
-    # (leaking margin). Resolved at call time so it reflects whatever is loaded.
-    def self.gateway_type_names
-      ([Spree::BankPayments::Gateway] + Spree::BankPayments::Gateway.descendants).map(&:name).uniq
-    end
-
-    # Subquery of payment-method ids for those types. `unscoped` deliberately:
-    # a soft-deleted payment method must still have its stale adjustments found
-    # and removed.
-    def self.gateway_scope
-      Spree::PaymentMethod.unscoped.where(type: gateway_type_names)
     end
 
     def self.pg_trgm_available?
