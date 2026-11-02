@@ -18,11 +18,11 @@ RSpec.describe Spree::BankPayments::ApplyTransfer do
   let(:session) do
     create(:bank_transfer_payment_session,
            order: order, payment_method: payment_method,
-           external_id: 'TKF-7Q4X2', amount: 25.00, currency: 'GBP')
+           external_id: 'ACME-7Q4X2', amount: 25.00, currency: 'GBP')
   end
   let(:transfer) do
     create(:bank_transfer_incoming_transfer,
-           amount: 25.00, currency: 'GBP', reference_raw: 'TKF-7Q4X2',
+           amount: 25.00, currency: 'GBP', reference_raw: 'ACME-7Q4X2',
            provider_transaction_id: 'TX-APPLY-1')
   end
 
@@ -53,7 +53,7 @@ RSpec.describe Spree::BankPayments::ApplyTransfer do
     let(:session) do
       create(:bank_transfer_payment_session,
              order: order, payment_method: payment_method,
-             external_id: 'TKF-7Q4X2', amount: 250.00, currency: 'GBP')
+             external_id: 'ACME-7Q4X2', amount: 250.00, currency: 'GBP')
     end
 
     it "credits the payment with the transfer's amount, not the session's, when they differ" do

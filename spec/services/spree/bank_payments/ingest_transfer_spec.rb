@@ -24,7 +24,7 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
   let!(:session) do
     create(:bank_transfer_payment_session,
            order: order, payment_method: payment_method,
-           external_id: 'TKF-7Q4X2', amount: 25.00, currency: 'GBP')
+           external_id: 'ACME-7Q4X2', amount: 25.00, currency: 'GBP')
   end
 
   def transfer_data(overrides = {})
@@ -34,7 +34,7 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
         provider_transaction_id: 'TX-1',
         amount: 25.00,
         currency: 'GBP',
-        reference: 'TKF-7Q4X2',
+        reference: 'ACME-7Q4X2',
         payer_name: 'Jane Doe',
         occurred_at: Time.current,
         raw: {}
@@ -58,7 +58,7 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
     end
 
     it 'matches despite casing, spacing and punctuation' do
-      expect(ingest(reference: ' tkf/7q4x2 ')).to be_applied
+      expect(ingest(reference: ' acme/7q4x2 ')).to be_applied
     end
 
     # C2. The customer abandoned the transfer, paid by card, then sent the
@@ -81,9 +81,9 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
     it 'matches despite Crockford-ambiguous glyphs' do
       # The session reference contains digits 0 and 1; the customer typed the
       # letters O and I. Folding both sides makes them the same reference.
-      session.update!(external_id: 'TKF-01ABCD')
+      session.update!(external_id: 'ACME-01ABCD')
 
-      expect(ingest(reference: 'TKF-OIABCD', provider_transaction_id: 'TX-9')).to be_applied
+      expect(ingest(reference: 'ACME-OIABCD', provider_transaction_id: 'TX-9')).to be_applied
     end
   end
 
@@ -115,7 +115,7 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
     end
 
     it 'when the reference matches nothing' do
-      expect(ingest(reference: 'TKF-NOPE1', provider_transaction_id: 'TX-5')).to be_unmatched
+      expect(ingest(reference: 'ACME-NOPE1', provider_transaction_id: 'TX-5')).to be_unmatched
     end
 
     it 'when the reference is blank' do

@@ -28,7 +28,7 @@ Add a Bank Transfer payment method in the Spree admin and set:
 | Preference | Purpose |
 |---|---|
 | `reconciler` | `manual` by default; `revolut` with `spree-bank_payments_revolut` installed |
-| `reference_prefix` | Prefix on generated references, e.g. `TKF-` |
+| `reference_prefix` | Prefix on generated references, e.g. `ACME-` |
 | `expiry_days` | Days before an unpaid order is cancelled and restocked |
 | `discount_percent` | Percentage off `item_total` for paying by transfer |
 | `poll_interval_minutes` | How often the reconciler polls; drives the health gate |

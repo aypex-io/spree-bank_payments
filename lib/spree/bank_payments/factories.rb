@@ -4,7 +4,7 @@ FactoryBot.define do
     sequence(:provider_transaction_id) { |n| "TX-#{n}" }
     amount { 25.00 }
     currency { 'GBP' }
-    reference_raw { 'TKF-7Q4X2' }
+    reference_raw { 'ACME-7Q4X2' }
     payer_name { 'Jane Doe' }
     occurred_at { Time.current }
     state { 'unmatched' }
@@ -15,7 +15,7 @@ FactoryBot.define do
     preferences do
       {
         reconciler: 'manual',
-        reference_prefix: 'TKF-',
+        reference_prefix: 'ACME-',
         expiry_days: 3,
         discount_percent: 3,
         poll_interval_minutes: 15,
@@ -32,7 +32,7 @@ FactoryBot.define do
     amount { 25.00 }
     currency { 'GBP' }
     status { 'pending' }
-    sequence(:external_id) { |n| "TKF-TEST#{n.to_s.rjust(2, '0')}" }
+    sequence(:external_id) { |n| "ACME-TEST#{n.to_s.rjust(2, '0')}" }
     expires_at { 3.days.from_now }
   end
 

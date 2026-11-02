@@ -9,7 +9,7 @@ RSpec.describe Spree::BankPayments::Gateway, '#parse_webhook_event' do
   let!(:session) do
     create(:bank_transfer_payment_session,
            order: order, payment_method: payment_method,
-           external_id: 'TKF-7Q4X2', amount: 25.00, currency: 'GBP')
+           external_id: 'ACME-7Q4X2', amount: 25.00, currency: 'GBP')
   end
 
   def stub_reconciler(transfer_data)
@@ -21,7 +21,7 @@ RSpec.describe Spree::BankPayments::Gateway, '#parse_webhook_event' do
   let(:data) do
     Spree::BankPayments::TransferData.new(
       provider: 'test', provider_transaction_id: 'TX-1', amount: 25.00,
-      currency: 'GBP', reference: 'TKF-7Q4X2', payer_name: 'Jane Doe',
+      currency: 'GBP', reference: 'ACME-7Q4X2', payer_name: 'Jane Doe',
       occurred_at: Time.current, raw: {}
     )
   end
@@ -46,7 +46,7 @@ RSpec.describe Spree::BankPayments::Gateway, '#parse_webhook_event' do
   end
 
   it 'persists the transfer but returns nil when nothing matches' do
-    stub_reconciler(data.with(reference: 'TKF-NOPE1'))
+    stub_reconciler(data.with(reference: 'ACME-NOPE1'))
 
     expect(payment_method.parse_webhook_event('{}', {})).to be_nil
     expect(Spree::BankPayments::IncomingTransfer.last).to be_unmatched
