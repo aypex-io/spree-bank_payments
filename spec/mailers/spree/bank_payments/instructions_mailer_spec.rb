@@ -23,7 +23,7 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
     end
 
     it 'renders the reference subject' do
-      expect(mail.subject).to eq(Spree.t('bank_payments.reference'))
+      expect(mail.subject).to eq(I18n.t('spree.bank_payments.reference'))
     end
 
     it 'includes the payment reference in the body' do
@@ -48,11 +48,11 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
     end
 
     it 'renders a pay-within subject that matches the days remaining on the session' do
-      expect(mail.subject).to eq(Spree.t('bank_payments.pay_within', days: days_remaining))
+      expect(mail.subject).to eq(I18n.t('spree.bank_payments.pay_within', days: days_remaining))
     end
 
     it 'states the same days-remaining figure in the subject and the body, so they cannot drift' do
-      expect(mail.body.encoded).to include(Spree.t('bank_payments.pay_within', days: days_remaining))
+      expect(mail.body.encoded).to include(I18n.t('spree.bank_payments.pay_within', days: days_remaining))
     end
 
     it 'includes the payment reference in the body' do
@@ -76,8 +76,14 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
   # with an amount, a deadline, and no coordinates at all.
   describe 'the account a session was quoted against' do
     # Goes through the gateway rather than the session factory so
-    # bank_account_id is recorded the way checkout records it.
-    let(:quoted_session) { payment_method.create_payment_session(order: order) }
+    # bank_account_id is recorded the way checkout records it, then moves
+    # onto the order the way Spree's cart completion repoints it.
+    let(:quoted_session) do
+      cart = create(:cart_with_line_items, currency: 'GBP', store: order.store)
+      payment_method.create_payment_session(order: cart).tap do |session|
+        session.update_columns(cart_id: nil, order_id: order.id)
+      end
+    end
 
     before do
       quoted_session
@@ -118,6 +124,23 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
 
       expect(body).to include('04-00-75')
       expect(body).to include('GB00REVO00000000000000')
+    end
+  end
+
+  describe 'an order placed through checkout' do
+    let(:gateway) { create(:bank_transfer_gateway) } # 3% in the factory
+    let(:placed) { place_with_bank_transfer(bank_transfer_cart(gateway: gateway, price: 100), gateway: gateway) }
+
+    it "emails the instructions to the order's address" do
+      order, session = placed
+
+      expect(described_class.instructions(session.prefixed_id).to).to eq([order.email])
+    end
+
+    it 'quotes the discounted amount' do
+      _, session = placed
+
+      expect(described_class.instructions(session.prefixed_id).body.encoded).to include('97.00')
     end
   end
 end

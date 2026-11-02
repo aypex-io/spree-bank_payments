@@ -9,7 +9,7 @@ module Spree
         @detail_sets = @session.bank_detail_sets
 
         with_store_locale(@order.store) do
-          mail(to: @order.email, subject: Spree.t('bank_payments.reference'))
+          mail(to: @order.email, subject: I18n.t('spree.bank_payments.reference'))
         end
       end
 
@@ -21,7 +21,7 @@ module Spree
         @days_remaining = ((@session.expires_at.to_date - Date.current).to_i)
 
         with_store_locale(@order.store) do
-          mail(to: @order.email, subject: Spree.t('bank_payments.pay_within', days: @days_remaining))
+          mail(to: @order.email, subject: I18n.t('spree.bank_payments.pay_within', days: @days_remaining))
         end
       end
 
