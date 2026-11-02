@@ -65,6 +65,9 @@ module Spree
                 transfer: @resource, payment_session: payment_session, applied_by: current_user
               )
               render json: serialize_resource(@resource.reload)
+            rescue Spree::BankPayments::ApplyTransfer::AlreadyApplied
+              # Another request applied it while this one waited for the lock.
+              refuse_applied
             rescue Spree::BankPayments::ApplyTransfer::Refused => e
               render_error(code: 'apply_refused', message: e.message, status: :unprocessable_content)
             end

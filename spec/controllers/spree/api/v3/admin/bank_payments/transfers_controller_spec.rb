@@ -254,6 +254,21 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::TransfersController, type: :
 
         expect(Spree::PaymentCaptureEvent.where(payment: order.payments).count).to eq(1)
       end
+
+      # Two requests at once: the other one applies the transfer after this
+      # request loaded it, while it waits for the lock.
+      it 'refuses a transfer applied while the request waited' do
+        transfer = unmatched
+        allow(Spree::BankPayments::ApplyTransfer).to receive(:call).and_wrap_original do |original, **kwargs|
+          other_request = Spree::BankPayments::IncomingTransfer.find(kwargs[:transfer].id)
+          original.call(transfer: other_request, payment_session: kwargs[:payment_session])
+          original.call(**kwargs)
+        end
+
+        apply(transfer)
+
+        expect(json_response.dig('error', 'code')).to eq('already_applied')
+      end
     end
 
     describe 'POST ignore' do
