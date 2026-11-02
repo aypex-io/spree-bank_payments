@@ -59,18 +59,39 @@ module Spree
         bank_account.detail_sets.select(&:usable?)
       end
 
-      # Event subscribers may run async via ActiveJob, so payloads must be
-      # serializable primitives — never AR objects.
+      # Everything a store needs to tell the buyer how to pay without a second
+      # API call: webhook receivers that send their own email (a headless
+      # storefront, say) get the bank details too.
+      #
+      # Event subscribers may run async via ActiveJob, so values are
+      # serializable primitives, never records. Keys are strings because Spree
+      # stringifies event payloads, and ids are prefixed because that is what
+      # the APIs and webhooks speak.
       def notification_payload
         {
-          payment_session_id: id,
-          order_number: order&.number,
-          order_email: order&.email,
-          reference: reference,
-          amount: amount.to_s,
-          currency: currency,
-          expires_at: expires_at&.iso8601
+          'payment_session_id' => prefixed_id,
+          'order_id' => order&.prefixed_id,
+          'order_number' => order&.number,
+          'order_email' => order&.email,
+          'reference' => reference,
+          'amount' => Spree::Money::Rounding.to_currency(amount, currency).to_s('F'),
+          'currency' => currency,
+          'expires_at' => expires_at&.iso8601,
+          'discount_percent' => payment_method.formatted_discount_percent,
+          'bank_details' => bank_detail_sets.map { |set| set.to_h.deep_stringify_keys }
         }
+      end
+
+      # Publishes one of the customer-facing bank_transfer events about this
+      # session, under its gateway's store: Spree's webhook subscriber drops
+      # an event with no store, and the jobs that publish these run with none.
+      #
+      # @param name [String] one of Spree::BankPayments::CUSTOMER_FACING_EVENTS
+      # @return [Spree::Event, nil]
+      def publish_bank_transfer_event(name)
+        Spree::Current.with_store(payment_method.store) do
+          publish_event(name, notification_payload)
+        end
       end
 
       private

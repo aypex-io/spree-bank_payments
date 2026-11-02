@@ -8,14 +8,12 @@ module Spree
           unless payment_method.reconciler_healthy?
             # Never cancel while blind: the customer may have paid and we simply
             # cannot see it. Alert and leave everything untouched.
-            Spree::Events.publish(
+            payment_method.publish_operational_event(
               'bank_transfer.reconciler_unhealthy',
-              {
-                payment_method_id: payment_method.id,
-                reconciler: payment_method.preferred_reconciler,
-                last_successful_run_at: payment_method.reconciler_state.last_successful_run_at&.iso8601,
-                last_error: payment_method.reconciler_state.last_error
-              }
+              payment_method_id: payment_method.prefixed_id,
+              reconciler: payment_method.preferred_reconciler,
+              last_successful_run_at: payment_method.reconciler_state.last_successful_run_at&.iso8601,
+              last_error: payment_method.reconciler_state.last_error
             )
             next
           end
@@ -25,12 +23,10 @@ module Spree
           # One payment method's failure (a bad state transition, a reconciler
           # gem gone missing, anything) must not wedge expiry for every other
           # payment method processed after it in this loop.
-          Spree::Events.publish(
+          payment_method.publish_operational_event(
             'bank_transfer.expiry_failed',
-            {
-              payment_method_id: payment_method.id,
-              error: e.message
-            }
+            payment_method_id: payment_method.prefixed_id,
+            error: e.message
           )
           Rails.error.report(e, source: 'spree_bank_payments.expire_sessions')
           next
@@ -75,7 +71,7 @@ module Spree
               session.expire!
             end
 
-            Spree::Events.publish('bank_transfer.expired', session.notification_payload)
+            session.publish_bank_transfer_event('bank_transfer.expired')
           end
       end
 
@@ -89,7 +85,7 @@ module Spree
       def close_superseded(session)
         session.cancel!
 
-        Spree::Events.publish('bank_transfer.session_superseded', session.notification_payload)
+        session.publish_bank_transfer_event('bank_transfer.session_superseded')
       end
 
       def cancel_order(order)

@@ -99,7 +99,7 @@ module Spree
           bank_account_id: account&.id
         )
 
-        Spree::Events.publish('bank_transfer.instructions_ready', session.notification_payload)
+        session.publish_bank_transfer_event('bank_transfer.instructions_ready')
 
         session
       end
@@ -260,6 +260,19 @@ module Spree
           type: payment_session_class.name,
           currency: order.currency
         )
+      end
+
+      # Publishes one of the operational bank_transfer events, under this
+      # gateway's store (the jobs that publish them run with none). Declared
+      # webhook: false, so no endpoint receives them.
+      #
+      # @param name [String] one of Spree::BankPayments::OPERATIONAL_EVENTS
+      # @param payload [Hash] serializable primitives
+      # @return [Spree::Event, nil]
+      def publish_operational_event(name, payload)
+        Spree::Current.with_store(store) do
+          publish_event(name, payload.deep_stringify_keys)
+        end
       end
 
       # Strip a trailing .0 on whole numbers (3 -> "3") but keep fractional

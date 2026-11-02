@@ -16,7 +16,7 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
   end
 
   describe '#instructions' do
-    subject(:mail) { described_class.instructions(session.id) }
+    subject(:mail) { described_class.instructions(session.prefixed_id) }
 
     it 'sends to the order email' do
       expect(mail.to).to eq([order.email])
@@ -39,7 +39,7 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
   end
 
   describe '#reminder' do
-    subject(:mail) { described_class.reminder(session.id) }
+    subject(:mail) { described_class.reminder(session.prefixed_id) }
 
     let(:days_remaining) { (session.expires_at.to_date - Date.current).to_i }
 
@@ -92,7 +92,7 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
     end
 
     it 'is what #instructions renders after the offered account changes' do
-      body = described_class.instructions(quoted_session.id).body.encoded
+      body = described_class.instructions(quoted_session.prefixed_id).body.encoded
 
       expect(body).to include('04-00-75')
       # Both: quoted-printable can soft-wrap the long IBAN, so the short
@@ -102,7 +102,7 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
     end
 
     it 'is what #reminder renders after the offered account changes' do
-      body = described_class.reminder(quoted_session.id).body.encoded
+      body = described_class.reminder(quoted_session.prefixed_id).body.encoded
 
       expect(body).to include('04-00-75')
       # Both: quoted-printable can soft-wrap the long IBAN, so the short
@@ -114,7 +114,7 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
     it 'still renders coordinates in a reminder when the currency is no longer offered at all' do
       Spree::BankPayments::BankAccount.where(payment_method_id: payment_method.id).update_all(offered: false)
 
-      body = described_class.reminder(quoted_session.id).body.encoded
+      body = described_class.reminder(quoted_session.prefixed_id).body.encoded
 
       expect(body).to include('04-00-75')
       expect(body).to include('GB00REVO00000000000000')

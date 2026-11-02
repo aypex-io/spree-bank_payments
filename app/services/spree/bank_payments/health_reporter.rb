@@ -110,12 +110,14 @@ module Spree
       # Serializable primitives only: subscribers run async through ActiveJob
       # and an ActiveRecord object cannot survive the trip.
       def publish(event)
-        Spree::Events.publish(event,
-                              payment_method_id: payment_method.id,
-                              reconciler: payment_method.preferred_reconciler.to_s,
-                              status: status.to_s,
-                              reason: reason.to_s,
-                              consecutive_failures: state.consecutive_failures)
+        payment_method.publish_operational_event(
+          event,
+          payment_method_id: payment_method.prefixed_id,
+          reconciler: payment_method.preferred_reconciler.to_s,
+          status: status.to_s,
+          reason: reason.to_s,
+          consecutive_failures: state.consecutive_failures
+        )
       end
     end
   end

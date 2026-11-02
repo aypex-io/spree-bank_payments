@@ -12,7 +12,7 @@ module Spree
           find_each do |session|
             next if reminded_today?(session)
 
-            Spree::Events.publish('bank_transfer.reminder_due', session.notification_payload)
+            session.publish_bank_transfer_event('bank_transfer.reminder_due')
             mark_reminded(session)
           end
       end

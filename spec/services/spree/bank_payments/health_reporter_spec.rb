@@ -41,7 +41,7 @@ RSpec.describe Spree::BankPayments::HealthReporter do
 
     expect(report(:ok, :ok)).to be(true)
     expect(logger).to have_received(:info).with(/event=bank_transfer\.reconciler_health\.recovered/)
-    expect(Spree::Events).to have_received(:publish).with('bank_transfer.reconciler_health.recovered', hash_including(payment_method_id: payment_method.id))
+    expect(Spree::Events).to have_received(:publish).with('bank_transfer.reconciler_health.recovered', hash_including('payment_method_id' => payment_method.prefixed_id), anything)
   end
 
   it 'stays silent while healthy' do
