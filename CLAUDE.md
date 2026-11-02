@@ -17,6 +17,10 @@ values only (`ACME-7Q4X2`, `shop.example.com`), never a real store or
 customer. Reference examples use `ACME-`: it has none of the letters
 normalization folds (O, I, L).
 
+`dashboard/` is the Spree dashboard plugin,
+`@aypex/spree-bank-payments-dashboard` on npm. It is released with the gem on
+the same `v*` tag and carries the same version.
+
 `docs/design-spec.md` is the behaviour the gem keeps. `docs/superpowers/`
 holds implementation plans.
 
@@ -27,6 +31,8 @@ bundle exec rake                 # builds spec/dummy if missing, rebuilds its sc
 bundle exec rake test_app        # (re)generate the dummy app
 bundle exec rspec path/to/spec.rb
 SPREE_VERSION=6.0.0 bundle update spree && bundle exec rspec   # oldest Spree the gemspec allows
+
+cd dashboard && corepack pnpm install && corepack pnpm typecheck && corepack pnpm lint
 ```
 
 The suite must print nothing and raise no deprecations:
@@ -60,6 +66,12 @@ The suite must print nothing and raise no deprecations:
   transfer payment, and `Gateway#can_capture?` is false.
 - **Expiry**: `ExpireSessionsJob` cancels through `Spree.order_cancel_workflow`,
   only while the reconciler is healthy, rescuing per session.
+- **Staff** work through the Admin API under `/api/v3/admin/bank_payments`
+  (`app/controllers/spree/api/v3/admin/bank_payments/`), which the dashboard
+  plugin calls. `RecordManualTransfer` and `IgnoreTransfer` back its record and
+  ignore actions; apply goes through `ApplyTransfer`. The `bank_payments`
+  permission scope (`config/initializers/spree.rb`) gates it: read for the
+  queue, write for everything that changes something.
 - **Upgrading from 5.x**: `MigrateLegacyDiscounts`
   (`rake spree_bank_payments:upgrade:legacy_discounts`) restores the 5.x
   discounts Spree's upgrade wrote as 0.00 surcharges.
@@ -86,3 +98,16 @@ The suite must print nothing and raise no deprecations:
 - Workflow hooks (`Spree.hooks.register`) go at the top level of an
   initializer, by handler class name: the registry is never reset.
 - Payment method names are unique per store; the gateway factory sequences them.
+
+## Dashboard plugin facts
+
+- The package entry is `src/index.ts`, not `.tsx`: the host's Vite pre-bundles
+  a dependency only when its entry is `.js` or `.ts`. Un-bundled, the plugin's
+  imports reach CommonJS the dev server cannot serve, and the page is blank.
+- Import UI from the `@spree/dashboard-ui` root, which the host pre-bundles,
+  not from deep `ui/*` paths.
+- Strings a module reads while it loads (the queue table's labels) need the
+  bundle registered first: `src/i18n.ts` is imported before them.
+- Every `Link` and `navigate` passes `storeId`. The plugin's own typecheck
+  cannot see the host's route tree, so build it inside a host
+  (`npm pack` the plugin, install the tarball) to check the paths.

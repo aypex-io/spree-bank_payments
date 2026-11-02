@@ -2,10 +2,11 @@
 
 The Spree dashboard screens for [`spree-bank_payments`](https://github.com/aypex-io/spree-bank_payments):
 
-- **Bank transfers** (under Orders): the unmatched-transfers queue, each transfer's possible matches with
-  Apply and Ignore, and a form to record a transfer seen on the bank statement.
+- **Bank transfers** (under Orders): the queue, which opens on unmatched transfers, each transfer's
+  possible matches with Apply and Ignore, and a form to record a transfer seen on the bank statement.
 - **Bank accounts**, linked from the bank transfer payment method: offer one account per currency,
-  deactivate, and sync from the provider after previewing the changes.
+  deactivate, add an account by hand, or, with a provider's reconciler, sync from the provider after
+  previewing the changes.
 - A **Bank transfer** card on the order page: the reference, amount, deadline and the transfer applied.
 - The payment method's **setup guide**: reconciler health, the webhook URL, and a warning when no
   account is offered.
