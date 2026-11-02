@@ -1,7 +1,12 @@
 import { useResourceKey } from '@spree/dashboard-core'
-import { CopyToClipboardButton, RelativeTime } from '@spree/dashboard-ui'
-import { Alert, AlertDescription, AlertTitle } from '@spree/dashboard-ui/ui/alert'
-import { Badge } from '@spree/dashboard-ui/ui/badge'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  CopyToClipboardButton,
+  RelativeTime,
+} from '@spree/dashboard-ui'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { bankPaymentsClient } from '../client'

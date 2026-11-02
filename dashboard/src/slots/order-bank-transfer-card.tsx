@@ -1,11 +1,17 @@
-import { useResourceKey } from '@spree/dashboard-core'
-import { CopyToClipboardButton, RelativeTime } from '@spree/dashboard-ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@spree/dashboard-ui/ui/card'
+import { formatStoreDate, useResourceKey, useStore } from '@spree/dashboard-core'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CopyToClipboardButton,
+  RelativeTime,
+} from '@spree/dashboard-ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { bankPaymentsClient } from '../client'
-import { money } from '../components/shared'
+import { money, useStoreId } from '../components/shared'
 
 /**
  * The order page's bank transfer card (`order.form_sidebar`): the reference,
@@ -14,6 +20,8 @@ import { money } from '../components/shared'
  */
 export function OrderBankTransferCard({ order }: { order: { id: string } }) {
   const { t } = useTranslation()
+  const storeId = useStoreId()
+  const { timezone } = useStore()
   const { data } = useQuery({
     queryKey: useResourceKey('bank_transfer_orders', order.id),
     queryFn: () => bankPaymentsClient.orderPanel(order.id),
@@ -64,10 +72,10 @@ export function OrderBankTransferCard({ order }: { order: { id: string } }) {
           <p key={transfer.id} className="mt-3 text-sm">
             <Link
               to="/$storeId/bank-transfers/$transferId"
-              params={{ transferId: transfer.id } as never}
+              params={{ storeId, transferId: transfer.id }}
             >
               {t('admin.bank_payments.order_card.transfer', {
-                date: new Date(transfer.occurred_at).toLocaleDateString(),
+                date: formatStoreDate(transfer.occurred_at, timezone),
               })}
             </Link>
           </p>

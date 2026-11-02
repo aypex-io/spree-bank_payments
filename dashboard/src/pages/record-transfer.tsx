@@ -1,21 +1,24 @@
 import { adminClient, mapSpreeErrorsToForm, PageHeader } from '@spree/dashboard-core'
-import { Button } from '@spree/dashboard-ui/ui/button'
-import { Card, CardContent } from '@spree/dashboard-ui/ui/card'
-import { Input } from '@spree/dashboard-ui/ui/input'
-import { Label } from '@spree/dashboard-ui/ui/label'
 import {
+  Button,
+  Card,
+  CardContent,
+  Input,
+  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@spree/dashboard-ui/ui/select'
-import { toastManager } from '@spree/dashboard-ui/ui/toast'
+  toastManager,
+} from '@spree/dashboard-ui'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { bankPaymentsClient } from '../client'
+import { useStoreId } from '../components/shared'
 import type { RecordTransferParams } from '../types'
 import { transfersQueryKey } from './transfers-list'
 
@@ -28,7 +31,7 @@ export function RecordTransferPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { storeId } = useParams({ strict: false }) as { storeId: string }
+  const storeId = useStoreId()
   const { data: methods } = useQuery({
     queryKey: ['bank_payments', 'payment_methods', storeId],
     queryFn: () => adminClient.paymentMethods.list({ limit: 100 }),
@@ -45,6 +48,15 @@ export function RecordTransferPage() {
     },
   })
 
+  // Most stores have one bank transfer method: pick it, so the form is
+  // never submitted with none.
+  const firstMethodId = bankMethods[0]?.id
+  useEffect(() => {
+    if (firstMethodId && form.getValues('payment_method_id') === '') {
+      form.setValue('payment_method_id', firstMethodId)
+    }
+  }, [firstMethodId, form])
+
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const transfer = await bankPaymentsClient.transfers.record(values)
@@ -55,7 +67,7 @@ export function RecordTransferPage() {
           : t('admin.bank_payments.record.queued')
       toastManager.add({ type: 'success', title })
       await queryClient.invalidateQueries({ queryKey: [transfersQueryKey] })
-      navigate({ to: '/$storeId/bank-transfers', params: { storeId } as never })
+      navigate({ to: '/$storeId/bank-transfers', params: { storeId } })
     } catch (error) {
       if (!mapSpreeErrorsToForm(error, form.setError)) {
         toastManager.add({
