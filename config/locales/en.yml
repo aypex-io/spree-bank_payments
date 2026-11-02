@@ -17,6 +17,8 @@ en:
         already_applied: "This transfer has already been applied."
         gateway_mismatch: "This transfer arrived on a different bank transfer payment method and cannot be applied to this session."
         amount_mismatch: "The transfer and the session are for different amounts. Confirm to apply it anyway; the order is credited for what arrived."
+        synced_account: "This account is synced from the provider: sync to refresh it, and deactivate it rather than delete it."
+        sync_empty: "The sync was refused (%{reason}). No accounts were changed."
         session_closed: "This bank transfer quote is no longer valid. Please choose bank transfer again."
         capture_only_by_transfer: "A bank transfer payment is captured when the transfer is applied to it."
         session_already_paid: "This bank transfer session has already been paid."

@@ -10,6 +10,15 @@ Spree::Core::Engine.add_routes do
               post :ignore
             end
           end
+
+          resources :payment_methods, only: [] do
+            resources :accounts, only: %i[index create update destroy] do
+              collection do
+                get :sync_plan
+                post :sync
+              end
+            end
+          end
         end
       end
     end
