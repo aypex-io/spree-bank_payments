@@ -10,6 +10,11 @@ module Spree
           class ResourceController < Spree::Api::V3::Admin::ResourceController
             scoped_resource :bank_payments
 
+            # Re-declared so the record is loaded after the permission check:
+            # staff without the key get Spree's 403 naming the permission they
+            # lack, not a 404 from a scope their role cannot read.
+            before_action :set_resource, only: %i[show update destroy]
+
             protected
 
             # Transfers and bank accounts reach their store through their
