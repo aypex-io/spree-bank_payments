@@ -26,13 +26,15 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::TransfersController, type: :
   end
 
   describe 'GET index' do
-    it 'lists unmatched transfers by default' do
+    # The dashboard opens the queue filtered to unmatched; the API itself
+    # applies no hidden filter, so "any status" means every transfer.
+    it 'lists transfers in every state when the request does not filter on state' do
       unmatched = transfer
-      transfer(state: 'ignored')
+      ignored = transfer(state: 'ignored')
 
       get :index, as: :json
 
-      expect(ids).to eq([unmatched.prefixed_id])
+      expect(ids).to contain_exactly(unmatched.prefixed_id, ignored.prefixed_id)
     end
 
     it 'filters by state' do
