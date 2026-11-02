@@ -1,0 +1,67 @@
+{
+  "name": "@aypex/spree-bank-payments-dashboard",
+  "version": "6.0.0",
+  "description": "Spree dashboard plugin for spree-bank_payments: the unmatched-transfers queue, recording received transfers, bank accounts, the order's bank transfer card and the payment method's setup guide.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aypex-io/spree-bank_payments.git",
+    "directory": "dashboard"
+  },
+  "homepage": "https://github.com/aypex-io/spree-bank_payments/tree/main/dashboard#readme",
+  "main": "./src/index.tsx",
+  "module": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "sideEffects": [
+    "./src/index.tsx"
+  ],
+  "spree": {
+    "dashboard": {
+      "plugin": true,
+      "routes": "./src/routes"
+    }
+  },
+  "scripts": {
+    "lint": "biome check src",
+    "lint:fix": "biome check --fix src",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@spree/admin-sdk": ">=6.0.1 <7",
+    "@spree/dashboard-core": ">=6.0.1 <7",
+    "@spree/dashboard-ui": ">=6.0.1 <7",
+    "@tanstack/react-query": "^5.100.9",
+    "@tanstack/react-router": "^1.169.2",
+    "i18next": "^26.2.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-hook-form": "^7.90.0",
+    "react-i18next": "^17.0.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@spree/admin-sdk": "~6.0.1",
+    "@spree/dashboard-core": "~6.0.1",
+    "@spree/dashboard-ui": "~6.0.1",
+    "@tanstack/react-query": "^5.104.5",
+    "@tanstack/react-router": "^1.170.45",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "i18next": "^26.5.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hook-form": "^7.90.0",
+    "react-i18next": "^17.1.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.4"
+  },
+  "packageManager": "pnpm@11.13.1"
+}

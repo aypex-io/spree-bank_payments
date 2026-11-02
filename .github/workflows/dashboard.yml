@@ -1,0 +1,32 @@
+name: Dashboard plugin
+
+on:
+  push:
+    branches: [main]
+    paths: ['dashboard/**', '.github/workflows/dashboard.yml']
+  pull_request:
+    branches: [main]
+    paths: ['dashboard/**', '.github/workflows/dashboard.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck and lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install
+        run: corepack enable && pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
