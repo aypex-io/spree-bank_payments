@@ -1,5 +1,10 @@
 en:
   spree:
+    permissions_catalog:
+      resources:
+        bank_payments:
+          label: "Bank transfers"
+          description: "The unmatched-transfers queue, recording received transfers, applying them to orders, and bank accounts."
     bank_payments:
       gateway_name: "Bank transfer"
       gateway_description: "Customers pay by bank transfer, quoting a unique reference. Incoming transfers are matched to orders automatically, or queued for staff."

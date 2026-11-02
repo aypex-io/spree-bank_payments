@@ -4,6 +4,15 @@
 Spree.hooks.register('carts.complete.validate', 'Spree::BankPayments::SettleAtCompletion')
 Spree.hooks.register('payments.capture.validate', 'Spree::BankPayments::GuardCapture')
 
+# Staff roles grant read_bank_payments (the queue, suggestions, health) and
+# write_bank_payments (recording, applying, ignoring, accounts). Resolved
+# lazily, so the classes need not be loaded yet.
+unless Spree.permissions.scope(:bank_payments)
+  Spree.permissions.register_scope(:bank_payments, group: :orders, resources: lambda {
+    [Spree::BankPayments::IncomingTransfer, Spree::BankPayments::BankAccount]
+  })
+end
+
 Rails.application.config.after_initialize do
   Rails.application.config.spree.payment_methods << Spree::BankPayments::Gateway
 

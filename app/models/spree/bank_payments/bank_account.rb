@@ -4,6 +4,9 @@ module Spree
     # quoted it; every active account is watched regardless, which is what makes
     # switching accounts safe for orders already in flight.
     class BankAccount < Base
+      has_prefix_id :bacct
+
+      self.whitelisted_ransackable_attributes = %w[currency offered active]
       # Spree::PaymentMethod (our belongs_to parent) is acts_as_paranoid.
       # Without this, Gateway's `dependent: :destroy` on #bank_accounts would
       # hard-delete these rows the moment an admin soft-deletes the gateway --
