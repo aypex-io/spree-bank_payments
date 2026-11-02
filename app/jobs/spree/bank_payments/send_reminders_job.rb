@@ -6,9 +6,12 @@ module Spree
       REMIND_WITHIN = 2.days
 
       def perform
+        # Placed orders only: nobody was sent instructions for a checkout
+        # that was never placed, so there is nothing to remind them of.
         ::Spree::PaymentSessions::BankTransfer.
           open.
           where(expires_at: Time.current..REMIND_WITHIN.from_now).
+          joins(:order).merge(::Spree::Order.where(status: 'placed')).
           find_each do |session|
             next if reminded_today?(session)
 

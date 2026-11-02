@@ -1,13 +1,25 @@
 module Spree
   module BankPayments
+    # Closes bank transfer sessions whose payment window has passed.
+    #
+    # | Session belongs to            | Result                                       |
+    # |-------------------------------|----------------------------------------------|
+    # | a cart, or a draft order      | expired; nobody to tell                      |
+    # | a placed order, paid          | canceled; bank_transfer.session_superseded   |
+    # | a placed order, unpaid        | order canceled through Spree, session        |
+    # |                               | expired, bank_transfer.expired               |
+    #
+    # Never while the gateway's reconciler is unhealthy: the buyer may have
+    # paid and we simply cannot see it.
     class ExpireSessionsJob < ActiveJob::Base
       queue_as :default
+
+      SETTLED_PAYMENT_STATUSES = %w[paid overcharged].freeze
+      CANCEL_NOTE = 'Bank transfer not received by the payment deadline.'.freeze
 
       def perform
         Spree::BankPayments::Gateway.find_each do |payment_method|
           unless payment_method.reconciler_healthy?
-            # Never cancel while blind: the customer may have paid and we simply
-            # cannot see it. Alert and leave everything untouched.
             payment_method.publish_operational_event(
               'bank_transfer.reconciler_unhealthy',
               payment_method_id: payment_method.prefixed_id,
@@ -40,58 +52,48 @@ module Spree
           open.
           where(payment_method_id: payment_method.id).
           where(expires_at: ...Time.current).
-          find_each do |session|
-            # C2: nothing else closes a bank-transfer session when the order
-            # settles by another means. A customer who abandons the transfer
-            # and pays by card leaves a pending, past-expiry session behind;
-            # `order.allow_cancel?` is true for a paid, unshipped order, so
-            # without this guard the job cancels and restocks an order that
-            # has been paid in full. The session is closed as `canceled`
-            # rather than `expired`: in this gem `expired` means "the customer
-            # never paid, we cancelled the order and released the stock" and
-            # publishes the customer-facing bank_transfer.expired event.
-            # Nothing of the sort happened here -- the session is simply no
-            # longer needed, which is exactly what `canceled` means in
-            # Spree::PaymentSession's state machine, and it publishes
-            # payment_session.canceled instead so no cancellation-shaped event
-            # escapes for a live order.
-            if settled_elsewhere?(session)
-              close_superseded(session)
-              next
-            end
-
-            # cancel_order runs first, session.expire! last: Spree's state
-            # machine publishes `payment_session.expired` synchronously from
-            # inside session.expire!, so it must be the final statement in the
-            # transaction — if cancel_order were to raise after it, the DB
-            # rollback couldn't unwind an event a subscriber may have already
-            # acted on. Same ordering rationale as ApplyTransfer (Task 6).
-            ActiveRecord::Base.transaction do
-              cancel_order(session.order)
-              session.expire!
-            end
-
-            session.publish_bank_transfer_event('bank_transfer.expired')
-          end
+          find_each { |session| close(session) }
       end
 
-      # `credit_owed` counts as settled too: the order has been paid, just for
-      # more than it was owed. Cancelling and restocking it would be no less
-      # wrong than cancelling a cleanly paid one.
-      def settled_elsewhere?(session)
-        %w[paid credit_owed].include?(session.order&.payment_state)
+      def close(session)
+        order = session.order
+
+        if order.nil? || !order.placed?
+          # An abandoned checkout. There is no order to cancel and no
+          # cancellation to announce.
+          session.expire
+        elsif SETTLED_PAYMENT_STATUSES.include?(order.payment_status)
+          # C2: paid another way. Nothing else closes the session when that
+          # happens, and cancelling would restock an order paid in full.
+          # `canceled`, not `expired`: in this gem `expired` means "never paid,
+          # we cancelled the order".
+          supersede(session)
+        else
+          cancel_unpaid(session, order)
+        end
       end
 
-      def close_superseded(session)
-        session.cancel!
-
-        session.publish_bank_transfer_event('bank_transfer.session_superseded')
+      def supersede(session)
+        session.publish_bank_transfer_event('bank_transfer.session_superseded') if session.cancel
       end
 
-      def cancel_order(order)
-        return unless order&.allow_cancel?
+      # The session stays open until Spree has actually cancelled the order:
+      # a refused cancel (a host's before_cancel hook, say) leaves a transfer
+      # free to match, and staff are told.
+      def cancel_unpaid(session, order)
+        result = Spree.order_cancel_workflow.call(order: order, note: CANCEL_NOTE, notify_customer: false)
 
-        order.cancel!
+        if result.success?
+          session.publish_bank_transfer_event('bank_transfer.expired') if session.expire
+        else
+          session.payment_method.publish_operational_event(
+            'bank_transfer.expiry_failed',
+            payment_method_id: session.payment_method.prefixed_id,
+            payment_session_id: session.prefixed_id,
+            order_number: order.number,
+            error: result.error.to_s
+          )
+        end
       end
     end
   end
