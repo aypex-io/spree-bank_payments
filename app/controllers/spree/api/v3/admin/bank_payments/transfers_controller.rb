@@ -80,6 +80,8 @@ module Spree
 
               Spree::BankPayments::IgnoreTransfer.call(transfer: @resource, reason: params[:reason])
               render json: serialize_resource(@resource)
+            rescue Spree::BankPayments::IgnoreTransfer::AlreadyApplied
+              refuse_applied
             rescue ActiveModel::ValidationError => e
               render_errors(e.model.errors)
             end

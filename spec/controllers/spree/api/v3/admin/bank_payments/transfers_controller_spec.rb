@@ -292,6 +292,20 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::TransfersController, type: :
 
         expect(json_response.dig('error', 'code')).to eq('already_applied')
       end
+
+      # Another request applies the transfer after this one loaded it.
+      it 'refuses to ignore a transfer applied while the request waited' do
+        transfer = unmatched
+        allow(Spree::BankPayments::IgnoreTransfer).to receive(:call).and_wrap_original do |original, **kwargs|
+          other_request = Spree::BankPayments::IncomingTransfer.find(kwargs[:transfer].id)
+          Spree::BankPayments::ApplyTransfer.call(transfer: other_request, payment_session: session)
+          original.call(**kwargs)
+        end
+
+        post :ignore, params: { id: transfer.prefixed_id, reason: 'Duplicate' }, as: :json
+
+        expect(json_response.dig('error', 'code')).to eq('already_applied')
+      end
     end
   end
 
