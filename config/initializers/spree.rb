@@ -1,43 +1,5 @@
 Rails.application.config.after_initialize do
   Rails.application.config.spree.payment_methods << Spree::BankPayments::Gateway
-
-  # Must be here rather than in `to_prepare` below: spree_core ASSIGNS
-  # `config.spree.adjusters = [Promotion, Tax]` in its own after_initialize,
-  # and `to_prepare` callbacks run earlier in boot, so a to_prepare-only
-  # registration would be silently wiped. Engine initializers (this file
-  # included) are loaded after spree_core's engine registers its hook, so this
-  # block runs after that assignment. See
-  # Spree::BankPayments.register_discount_adjuster! for why the ordering
-  # within the array matters.
-  Spree::BankPayments.register_discount_adjuster!
-
-  # I4: without this the unmatched-transfers queue (and the "record a
-  # received transfer" form that is the only ingress under the default
-  # Manual reconciler) is reachable only by typing the URL.
-  #
-  # `Spree.admin.navigation.sidebar.add` is spree_admin 5.6's supported
-  # extension point -- the same call its own scaffold generator emits
-  # (lib/generators/spree/admin/scaffold/templates/navigation_initializer.rb.tt)
-  # and the same registry its defaults use
-  # (config/initializers/spree_admin_navigation.rb), rendered by
-  # `render_navigation(:sidebar)`. Checked, not assumed.
-  #
-  # Guarded because spree_admin is an optional companion: a store running
-  # headless (API only, no admin UI) must not blow up at boot.
-  if defined?(::Spree::Admin::Engine) && ::Spree.admin.respond_to?(:navigation)
-    ::Spree.admin.navigation.sidebar.add(
-      :bank_transfers,
-      label: 'Bank transfers',
-      url: :admin_bank_transfers_path,
-      icon: 'building-bank',
-      position: 25,
-      # Gated on payment management rather than on IncomingTransfer, which
-      # Spree's Ability has no rule for -- `can?` would be false for every
-      # admin and the entry would never render.
-      if: -> { can?(:manage, ::Spree::Payment) },
-      active: -> { controller_name == 'bank_transfers' }
-    )
-  end
 end
 
 # Reconciler registration, and the default mailer's event subscriptions,
@@ -62,13 +24,4 @@ Rails.application.config.to_prepare do
   # Subscribers must re-register per reload too: spree_core's own to_prepare hook
   # calls Spree::Events.reset!, which drops Proc-based subscribers registered at boot.
   Spree::BankPayments.register_default_mailer_subscribers! unless Spree::BankPayments::Config.disable_default_mailer
-
-  # Also re-registered per reload, for the Zeitwerk reason above rather than
-  # the Spree::Events one: Adjuster::Discount autoloads from app/models, so
-  # after a reload the adjusters array holds a stale, unloaded class object.
-  # register_discount_adjuster! rejects by class NAME and re-inserts, so this
-  # swaps in the fresh constant without ever stacking duplicates. On the very
-  # first boot the array is not seeded yet and this call is a no-op; the
-  # after_initialize call above does the real registration.
-  Spree::BankPayments.register_discount_adjuster!
 end
