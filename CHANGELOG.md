@@ -44,9 +44,9 @@ Spree 5.6 stays on 5.3.x, on the `5-3-stable` branch. To upgrade, see
   reconciler. Sync from provider is offered only for a provider's
   reconciler, as in 5.x.
 - **An Admin API** under `/api/v3/admin/bank_payments`: transfers (list,
-  show, suggestions, record, apply, ignore), a payment method's accounts
-  (list, create, update, delete, sync plan, sync), its reconciler health,
-  and an order's bank transfer. Transfers and accounts have prefixed ids,
+  show, suggestions, record, apply, ignore), the store's bank transfer
+  payment methods, each one's accounts (list, create, update, delete, sync
+  plan, sync) and reconciler health, and an order's bank transfer. Transfers and accounts have prefixed ids,
   `btxfr_` and `bacct_`.
 - **A Bank transfers permission** for staff roles (`read_bank_payments`,
   `write_bank_payments`): read to see the queue, write to act on it.
