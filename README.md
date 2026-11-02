@@ -101,8 +101,8 @@ every order regardless of currency.
   bounced transfer or a correspondent fee with no explanation. Let them
   choose; they know where they bank.
 - **Staff choose the offered account:** at most one account per currency
-  can be *offered*, and only a person sets it (`account.update!(offered: true)`
-  from a console until the dashboard plugin ships). This is
+  can be *offered*, and only a person sets it (the **Offer to customers**
+  switch on the dashboard's bank accounts screen). This is
   enforced by a partial unique database index
   (`index_bp_bank_accounts_on_pm_and_currency_offered`), not just a form
   validation — a second offered row for the same currency cannot exist,
@@ -124,8 +124,8 @@ every order regardless of currency.
   until someone offers at least one account.
 - **Two sync triggers:**
   1. **A person asks for it.** `SyncAccounts.new(payment_method:).plan`
-     returns the diff to confirm, and `#apply!` applies it (the dashboard
-     plugin's sync button, once it ships).
+     returns the diff to confirm, and `#apply!` applies it (the dashboard's
+     **Sync from provider** button, shown for any reconciler but `manual`).
   2. **Consent re-approval**, for providers whose credentials need periodic
      re-authorisation (e.g. an OAuth consent that expires every ~90 days).
      A provider gem can call `SyncAccounts.new(payment_method:).apply!(additive_only: true)`
@@ -217,21 +217,55 @@ is skipped too; both appear under `skipped` in the sync diff.
 See "Writing a reconciler" below for the full contract, including the shared
 example group that exercises this method's return type.
 
-## Applying transfers by hand
+## The dashboard
 
 A transfer that matches exactly (reference, amount and currency, against a
 single open session on a placed, unpaid order) is applied automatically and
 the order reads `paid`. Anything else is kept as an unmatched
-`Spree::BankPayments::IncomingTransfer` for a person to decide.
+`Spree::BankPayments::IncomingTransfer` for a person to decide. They decide
+in Spree's dashboard, through a plugin released with the gem at the same
+version, [`@aypex/spree-bank-payments-dashboard`](dashboard/README.md):
 
-The 5.x Rails admin screens (the unmatched queue, the bank accounts
-screen and the order panel) do not exist on Spree 6, which has no Rails
-admin. They return as a dashboard plugin. Until then, the decisions are
-made from a console:
+```bash
+# in the dashboard app (the one built with Spree's dashboard-starter)
+pnpm add @aypex/spree-bank-payments-dashboard
+```
+
+The dashboard discovers the plugin on its next build. It adds:
+
+- **Bank transfers**, under Orders: the queue, which opens on unmatched
+  transfers ("any status" lists every one). A transfer's page ranks the
+  open sessions it could belong to, with **Apply** and **Ignore** (with a
+  reason). Applying a transfer for a different amount asks first, and the
+  order is credited for what arrived, so it reads `partially_paid` or
+  `overcharged`, never a false `paid`.
+- **Record a transfer**: enter one seen on the bank statement. With the
+  default `manual` reconciler this is how transfers are recorded. An exact
+  match is applied at once; anything else joins the queue.
+- **Bank accounts**, linked from the bank transfer payment method: offer one
+  account per currency, deactivate one, add one by hand, or, with a
+  provider's reconciler, sync from the provider after previewing the
+  changes.
+- A **Bank transfer** card on the order page (the reference, the amount, the
+  deadline and the transfer applied) and a **setup guide** on the payment
+  method (reconciler health, the webhook URL to give the provider, and a
+  warning when no account is offered).
+
+Give staff roles the **Bank transfers** permission: read to see the queue,
+write to apply, ignore, record and manage accounts. The plugin talks to the
+gem's Admin API under `/api/v3/admin/bank_payments`, which any other admin
+client can use too.
+
+Recording the same transfer twice is safe: a transfer's identity is its
+provider and provider transaction id, so a second record is the same row and
+nothing is credited twice.
+
+### Without the dashboard
+
+The same decisions from a console:
 
 ```ruby
-# Record a transfer received outside any provider integration. With the
-# default `manual` reconciler this is the only way one is recorded.
+# Record a transfer received outside any provider integration.
 data = Spree::BankPayments::TransferData.new(
   provider: 'manual', provider_transaction_id: 'bank-statement-2026-11-02-1',
   amount: BigDecimal('97.00'), currency: 'GBP', reference: 'ACME-7Q4X2',
@@ -242,14 +276,12 @@ Spree::BankPayments::IngestTransfer.new(payment_method: gateway, transfer_data: 
 # Rank the open sessions an unmatched transfer could belong to.
 Spree::BankPayments::SuggestMatches.new(transfer: transfer).call
 
-# Apply it. A transfer for a different amount is credited for what arrived,
-# so the order reads partially_paid or overcharged, never a false paid.
+# Apply it.
 Spree::BankPayments::ApplyTransfer.call(transfer: transfer, payment_session: session, applied_by: admin)
-```
 
-Recording the same transfer twice is safe: a transfer's identity is its
-provider and provider transaction id, so a second record is the same row and
-nothing is credited twice.
+# Offer an account.
+account.update!(offered: true)
+```
 
 ## Scheduling
 

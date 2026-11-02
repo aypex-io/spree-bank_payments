@@ -36,20 +36,26 @@ amount Spree left in `spree_adjustments`. It is safe to run more than once.
 
 ## What changes for staff
 
-There is no Rails admin on Spree 6, so the 5.x screens are gone: the
-unmatched-transfers queue, the "record a received transfer" form, the bank
-accounts screen and the order panel. They return as a dashboard plugin.
+There is no Rails admin on Spree 6. The 5.x screens (the unmatched-transfers
+queue, the "record a received transfer" form, the bank accounts screen and
+the order panel) are now a Spree dashboard plugin, released with the gem at
+the same version:
 
-Until it ships:
+```bash
+# in the dashboard app
+pnpm add @aypex/spree-bank-payments-dashboard
+```
 
-- Exact matches apply automatically, as before, and unpaid orders still
-  expire on schedule.
-- Unmatched transfers wait as `Spree::BankPayments::IncomingTransfer` rows in
-  the `unmatched` state. Apply them from a console with
-  `Spree::BankPayments::ApplyTransfer`.
-- On the `manual` reconciler, record received transfers from a console with
-  `Spree::BankPayments::IngestTransfer`. The README shows both.
-- Offer an account with `account.update!(offered: true)`.
+The next dashboard build picks it up. Then give staff roles the **Bank
+transfers** permission: read to see the queue, write to apply, ignore,
+record and manage accounts.
+
+- The queue is under Orders, and opens on unmatched transfers.
+- The bank accounts screen is linked from the bank transfer payment method,
+  next to its setup guide.
+- The order page has a Bank transfer card in place of the 5.x panel.
+- Without the dashboard, the README's "Without the dashboard" section does
+  the same from a console.
 
 Staff can no longer dispatch an unpaid bank transfer order by accident:
 Spree refuses with "This order is not paid for yet" unless they force it.

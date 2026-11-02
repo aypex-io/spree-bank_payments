@@ -18,9 +18,8 @@ Spree 5.6 stays on 5.3.x, on the `5-3-stable` branch. To upgrade, see
 
 - **The Rails admin screens**: the unmatched-transfers queue, the "record a
   received transfer" form, the bank accounts screen, the sidebar entry, the
-  order panel partial and the payment method configuration guide. They return
-  as a dashboard plugin. Until then, exact matches still apply automatically,
-  and staff decide the rest from a console (see the README).
+  order panel partial and the payment method configuration guide. Spree 6's
+  dashboard plugin replaces them (see "The dashboard" below).
 - **The Rails storefront partials** (the checkout payment partial and
   `spree/bank_payments/_order_instructions`). A storefront reads the quote
   from the Store API instead.
@@ -28,6 +27,29 @@ Spree 5.6 stays on 5.3.x, on the `5-3-stable` branch. To upgrade, see
   `#description_partial_name`, `#configuration_guide_partial_name` and
   `#auto_capture?`.
 - `Spree::BankPayments.gateway_type_names` and `.gateway_scope`.
+
+### The dashboard
+
+- **A Spree dashboard plugin**, `@aypex/spree-bank-payments-dashboard` on
+  npm, released with the gem at the same version. `pnpm add` it in the
+  dashboard app and the next build picks it up. It brings back the 5.x
+  screens: the unmatched-transfers queue under Orders, each transfer's
+  possible matches with Apply and Ignore, recording a received transfer, the
+  bank accounts screen, a Bank transfer card on the order page and the
+  payment method's setup guide.
+- **Applying a transfer for a different amount asks first.** The Admin API
+  answers 422 `amount_mismatch`, with both amounts, until the request
+  confirms with `confirm_mismatch`.
+- **Accounts can be added by hand** from the dashboard, for the `manual`
+  reconciler. Sync from provider is offered only for a provider's
+  reconciler, as in 5.x.
+- **An Admin API** under `/api/v3/admin/bank_payments`: transfers (list,
+  show, suggestions, record, apply, ignore), a payment method's accounts
+  (list, create, update, delete, sync plan, sync), its reconciler health,
+  and an order's bank transfer. Transfers and accounts have prefixed ids,
+  `btxfr_` and `bacct_`.
+- **A Bank transfers permission** for staff roles (`read_bank_payments`,
+  `write_bank_payments`): read to see the queue, write to act on it.
 
 ### Checkout
 

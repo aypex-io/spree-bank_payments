@@ -12,6 +12,13 @@
 # rubygems/release-gem runs `bundle exec rake release`. Bundler's GemHelper
 # skips tagging when the tag already exists, which it does here because the tag
 # push is what triggered the run.
+#
+# The dashboard plugin (dashboard/) goes to npm from the same tag, after the
+# gem, also by trusted publishing. It needs a trusted publisher registered on
+# npmjs.com for @aypex/spree-bank-payments-dashboard with:
+#   repository  aypex-io/spree-bank_payments
+#   workflow    release.yml
+#   environment release
 name: Release
 
 on:
@@ -44,3 +51,36 @@ jobs:
           bundler-cache: true
 
       - uses: rubygems/release-gem@v1
+
+  npm:
+    name: Publish the dashboard plugin to npm
+    needs: push
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    environment: release
+
+    defaults:
+      run:
+        working-directory: dashboard
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Trusted publishing needs npm 11.5.1 or newer, which Node 24 ships.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Check the tag matches the plugin's version
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+
+      - name: Typecheck and lint
+        run: corepack enable && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint
+
+      - name: Publish
+        run: npm publish --provenance --access public
