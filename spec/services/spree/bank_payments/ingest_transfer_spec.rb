@@ -166,4 +166,19 @@ RSpec.describe Spree::BankPayments::IngestTransfer do
       expect { ingest_for_cart }.not_to change(Spree::Order, :count)
     end
   end
+
+  it 'queues a transfer applying refuses' do
+    allow(Spree::BankPayments::ApplyTransfer).to receive(:call).and_raise(Spree::BankPayments::ApplyTransfer::Refused)
+
+    expect(ingest.state).to eq('unmatched')
+  end
+
+  # A refund leaves an order paid for: a stray transfer is a person's call.
+  it 'refuses to auto-apply to an order paid and then partly refunded' do
+    payment = create(:payment, order: order, amount: order.total, status: 'completed')
+    create(:refund, payment: payment, amount: 5)
+    Spree.order_update_statuses_service.call(order: order.reload)
+
+    expect(ingest(provider_transaction_id: 'TX-REFUNDED').state).to eq('unmatched')
+  end
 end

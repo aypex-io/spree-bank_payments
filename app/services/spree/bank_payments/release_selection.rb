@@ -22,15 +22,26 @@ module Spree
         @except = except
       end
 
+      # Under the purchase's lock, and never once Spree has claimed the cart
+      # for completion: releasing then could void the payment completion has
+      # just counted, placing an order nothing would reconcile.
       def call
-        released = open_sessions.to_a.map { |session| release(session) }.any?
-        Spree::BankPayments.recalculate!(purchase) if released
-        released
+        purchase.with_lock do
+          next false if claimed_for_completion?
+
+          released = open_sessions.to_a.map { |session| release(session) }.any?
+          Spree::BankPayments.recalculate!(purchase) if released
+          released
+        end
       end
 
       private
 
       attr_reader :purchase, :except
+
+      def claimed_for_completion?
+        purchase.respond_to?(:completion_claimed?) && purchase.completion_claimed?
+      end
 
       def open_sessions
         scope = Spree::PaymentSessions::BankTransfer.open.where(id: purchase.payment_sessions.select(:id))

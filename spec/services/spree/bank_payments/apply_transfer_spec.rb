@@ -78,4 +78,49 @@ RSpec.describe Spree::BankPayments::ApplyTransfer do
     expect { described_class.call(transfer: transfer, payment_session: unplaced) }.
       to raise_error(described_class::Refused)
   end
+
+  # The lock serializes two transfers racing for one session (or a staff
+  # apply after the automatic one). The loser must not be marked applied
+  # with nothing captured: that would lose real money from the books.
+  describe 'under the lock' do
+    it 'refuses a second transfer for a session already paid' do
+      apply(transfer_for(session.amount))
+
+      expect { apply(transfer_for(session.amount)) }.to raise_error(described_class::Refused)
+    end
+
+    it 'leaves the second transfer unmatched' do
+      apply(transfer_for(session.amount))
+      second = transfer_for(session.amount)
+
+      begin
+        apply(second)
+      rescue described_class::Refused
+        nil
+      end
+
+      expect(second.reload.state).to eq('unmatched')
+    end
+
+    it 'refuses an order that was cancelled' do
+      Spree.order_cancel_workflow.call(order: order)
+
+      expect { apply(transfer_for(session.amount)) }.to raise_error(described_class::Refused)
+    end
+  end
+
+  # Staff cannot mark a bank transfer order paid from the dashboard: money
+  # moves only when a transfer is applied.
+  describe 'capturing outside a transfer' do
+    let(:payment) { order.payments.last }
+
+    # What Spree's back office asks (Payment#can_capture?, from 6.0.1).
+    it 'offers staff no capture' do
+      expect(gateway.can_capture?(payment)).to be(false)
+    end
+
+    it "refuses Spree's capture workflow" do
+      expect(Spree.payment_capture_workflow.call(payment: payment)).not_to be_success
+    end
+  end
 end

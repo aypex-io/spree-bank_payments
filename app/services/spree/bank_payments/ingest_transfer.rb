@@ -16,8 +16,13 @@ module Spree
         session = matching_session(transfer)
         return transfer unless session
 
-        # ApplyTransfer returns the transfer it was handed.
+        # ApplyTransfer returns the transfer it was handed. It refuses when, by
+        # the time it holds the order's lock, the session has been paid or the
+        # order cancelled by a racing transfer or a person: the transfer then
+        # stays unmatched for a person to decide.
         ApplyTransfer.call(transfer: transfer, payment_session: session)
+      rescue ApplyTransfer::Refused
+        transfer.reload
       end
 
       private
@@ -50,8 +55,6 @@ module Spree
         @arriving_bank_account ||= payment_method.bank_accounts.active.
           find_by(provider_account_id: data.provider_account_id)
       end
-
-      SETTLED_PAYMENT_STATUSES = %w[paid overcharged].freeze
 
       # Auto-apply demands certainty: exact reference, exact amount, exact
       # currency, against exactly one still-open session of a placed order.
@@ -89,7 +92,7 @@ module Spree
         # payment, leaving the order overcharged with real money to refund.
         # A second payment on a settled order is a human decision, so this
         # queues for the hand-match screen instead of applying itself.
-        return nil if SETTLED_PAYMENT_STATUSES.include?(session.order.payment_status)
+        return nil if Spree::BankPayments::SETTLED_PAYMENT_STATUSES.include?(session.order.payment_status)
 
         session
       end

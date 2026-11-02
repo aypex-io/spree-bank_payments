@@ -44,15 +44,25 @@ The suite must print nothing and raise no deprecations:
   `ReleaseSelection` takes bank transfer back off a cart; the
   `ReleaseOnOtherMethod` prepend runs it before the Store API sizes another
   method's session or payment.
+- **Completion**: `SettleAtCompletion` (Spree's `carts.complete.validate`
+  hook, under the cart lock) re-quotes the completed bank session and resizes
+  its payment, and releases any bank session the buyer never completed.
+  `Gateway#ensure_open!` refuses to complete or update a closed session.
 - **Placement**: `OrderPlacedSubscriber` restarts the payment window and
   publishes `bank_transfer.instructions_ready`.
 - **Reconciliation**: `IngestTransfer` and `ApplyTransfer` are the single
   implementation of matching and applying. Auto-apply needs an exact
   normalized reference, amount and currency against one open session of a
-  placed, unpaid order. `ApplyTransfer` settles through
-  `Spree.payment_capture_workflow`.
+  placed, unpaid order. `ApplyTransfer` re-checks under the order lock and
+  settles through `Spree.payment_capture_workflow`, flagging
+  `Spree::BankPayments::Current.applying_transfer`; `GuardCapture`
+  (`payments.capture.validate`) refuses every other capture of a bank
+  transfer payment, and `Gateway#can_capture?` is false.
 - **Expiry**: `ExpireSessionsJob` cancels through `Spree.order_cancel_workflow`,
-  only while the reconciler is healthy.
+  only while the reconciler is healthy, rescuing per session.
+- **Upgrading from 5.x**: `MigrateLegacyDiscounts`
+  (`rake spree_bank_payments:upgrade:legacy_discounts`) restores the 5.x
+  discounts Spree's upgrade wrote as 0.00 surcharges.
 
 ## Spree 6 facts this code rests on
 
@@ -71,5 +81,8 @@ The suite must print nothing and raise no deprecations:
 - A pending payment on a method that does not capture at checkout counts as
   ready to ship. The gateway pins `resolved_capture_method` to `checkout` so
   Spree holds an unpaid order's dispatch.
-- Spree's test config raises on `Spree.t`; use `I18n.t('spree.…')`.
+- Spree's test config raises on `Spree.t` and on `Payment#state`; use
+  `I18n.t('spree.…')` and `payment.status`.
+- Workflow hooks (`Spree.hooks.register`) go at the top level of an
+  initializer, by handler class name: the registry is never reset.
 - Payment method names are unique per store; the gateway factory sequences them.

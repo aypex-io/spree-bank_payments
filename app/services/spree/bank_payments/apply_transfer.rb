@@ -34,12 +34,19 @@ module Spree
 
         ActiveRecord::Base.transaction do
           order.with_lock do
+            # Re-read under the lock: a racing transfer or a person may have
+            # paid the session, or cancelled the order, since it was matched.
+            return transfer if transfer.reload.applied?
+
+            ensure_payable!(order)
             payment = payment_session.reload_payment || payment_session.find_or_create_payment!
+            raise Refused, I18n.t('spree.bank_payments.errors.session_already_paid') if payment.completed?
+
             restamp(payment)
             capture(payment)
             # After the payment, so a session.completed event (plausibly a
             # receipt) can never go out for a payment that did not settle.
-            payment_session.complete unless payment_session.completed?
+            payment_session.complete
             transfer.update!(applied_attributes)
           end
         end
@@ -62,10 +69,18 @@ module Spree
         payment.update!(amount: transfer.amount)
       end
 
-      def capture(payment)
-        return if payment.completed?
+      def ensure_payable!(order)
+        raise Refused, I18n.t('spree.bank_payments.errors.order_not_placed') unless order.placed?
+        return if payment_session.reload.pending? || payment_session.processing?
 
-        result = Spree.payment_capture_workflow.call(payment: payment)
+        raise Refused, I18n.t('spree.bank_payments.errors.session_already_paid')
+      end
+
+      # The one capture of a bank transfer payment GuardCapture lets through.
+      def capture(payment)
+        result = Spree::BankPayments::Current.set(applying_transfer: true) do
+          Spree.payment_capture_workflow.call(payment: payment)
+        end
         raise Refused, result.error.to_s unless result.success?
       end
 

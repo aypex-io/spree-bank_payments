@@ -116,6 +116,7 @@ module Spree
       #
       # @return [Spree::PaymentSessions::BankTransfer]
       def update_payment_session(payment_session:, amount: nil, external_data: {})
+        ensure_open!(payment_session)
         payment_session.external_data = payment_session.external_data.to_h.merge(client_data(external_data))
         Spree::BankPayments.recalculate!(payment_session.owner)
         payment_session.requote!
@@ -131,6 +132,7 @@ module Spree
       #
       # @return [Spree::PaymentSessions::BankTransfer]
       def complete_payment_session(payment_session:, params: {})
+        ensure_open!(payment_session)
         Spree::BankPayments.recalculate!(payment_session.owner)
         payment_session.requote!
         payment_session.process if payment_session.pending?
@@ -138,6 +140,18 @@ module Spree
         payment = payment_session.settle_payment!(captured: false)
         resize_unsettled(payment, payment_session.amount)
         payment_session
+      end
+
+      # Re-quotes a completed session against its purchase as it stands, and
+      # resizes the pending payment to match. Run when the cart completes, so
+      # an order is never placed owing one figure while the buyer is told
+      # another.
+      #
+      # @param payment_session [Spree::PaymentSessions::BankTransfer]
+      # @return [void]
+      def requote!(payment_session)
+        payment_session.requote!
+        resize_unsettled(payment_session.reload_payment, payment_session.amount)
       end
 
       # Spree retires the sessions an order left unused when it is placed. A
@@ -178,7 +192,14 @@ module Spree
       end
 
       def can_void?(payment)
-        payment.state != 'void'
+        payment.status != 'void'
+      end
+
+      # Spree 6 offers staff a Capture action whenever this is true. A bank
+      # transfer payment is captured only by applying a transfer to it (see
+      # Spree::BankPayments::GuardCapture).
+      def can_capture?(_payment)
+        false
       end
 
       def void(*)
@@ -340,6 +361,15 @@ module Spree
         return unless %w[checkout pending].include?(payment.status)
 
         payment.update!(amount: amount)
+      end
+
+      # A released, expired or completed session's reference matches nothing
+      # any more, so an order paid through it would never be reconciled,
+      # reminded or expired. Spree turns the error into a 422.
+      def ensure_open!(payment_session)
+        return if payment_session.pending? || payment_session.processing?
+
+        raise ::Spree::Core::GatewayError, I18n.t('spree.bank_payments.errors.session_closed')
       end
 
       def client_data(external_data)

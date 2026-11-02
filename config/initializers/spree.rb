@@ -1,3 +1,9 @@
+# Workflow hooks register once, at the top level: Spree's hook registry is
+# never reset, and stores handler class names, which resolve fresh on each
+# call so they survive code reloads.
+Spree.hooks.register('carts.complete.validate', 'Spree::BankPayments::SettleAtCompletion')
+Spree.hooks.register('payments.capture.validate', 'Spree::BankPayments::GuardCapture')
+
 Rails.application.config.after_initialize do
   Rails.application.config.spree.payment_methods << Spree::BankPayments::Gateway
 

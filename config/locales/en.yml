@@ -5,6 +5,9 @@ en:
       gateway_description: "Customers pay by bank transfer, quoting a unique reference. Incoming transfers are matched to orders automatically, or queued for staff."
       errors:
         session_required: "Bank transfer payments are taken through a payment session."
+        session_closed: "This bank transfer quote is no longer valid. Please choose bank transfer again."
+        capture_only_by_transfer: "A bank transfer payment is captured when the transfer is applied to it."
+        session_already_paid: "This bank transfer session has already been paid."
         order_not_placed: "This bank transfer's order was never placed, so there is nothing to apply it to."
       discount_label: "Bank Transfer discount (%{percent}%)"
       payment_method_label: "Bank Transfer — save %{percent}%"

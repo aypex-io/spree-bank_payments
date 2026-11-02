@@ -69,4 +69,18 @@ RSpec.describe 'Bank transfer through the Store API', type: :request do
       expect(payment['bank_transfer']['bank_details'].first['fields']).not_to be_empty
     end
   end
+
+  # A switch voids the bank payment; its reference matches nothing now and
+  # must not be shown as something to pay.
+  it 'shows no instructions on a payment voided by a switch' do
+    session = quote_bank_transfer
+    patch "#{base}/payment_sessions/#{session['id']}/complete", params: {}, headers: headers, as: :json
+    check = create(:check_payment_method, store: cart.store)
+    post "#{base}/payments", params: { payment_method_id: check.prefixed_id }, headers: headers, as: :json
+
+    get base, headers: headers, as: :json
+
+    voided = json_response['payments'].find { |payment| payment['status'] == 'void' }
+    expect(voided['bank_transfer']).to be_nil
+  end
 end

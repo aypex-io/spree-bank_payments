@@ -59,6 +59,28 @@ RSpec.describe Spree::BankPayments::ExpireSessionsJob do
 
       expect(stock_item.reload.count_on_hand).to eq(10)
     end
+
+    # The order carries the pending payment checkout left: Spree's cancel
+    # voids it through the gateway.
+    it 'voids the pending payment' do
+      order, placed_session = place_with_bank_transfer(cart, gateway: gateway)
+      placed_session.update_columns(expires_at: 1.hour.ago)
+
+      described_class.perform_now
+
+      expect(order.payments.reload.map(&:status)).to eq(%w[void])
+    end
+
+    it 'expires the session and tells the buyer' do
+      _, placed_session = place_with_bank_transfer(cart, gateway: gateway)
+      placed_session.update_columns(expires_at: 1.hour.ago)
+
+      described_class.perform_now
+
+      told = published('bank_transfer.expired').count { |payload| payload['payment_session_id'] == placed_session.prefixed_id }
+
+      expect([placed_session.reload.status, told]).to eq(['expired', 1])
+    end
   end
 
   # The buyer picked bank transfer and left. There is no order to cancel and
@@ -116,6 +138,55 @@ RSpec.describe Spree::BankPayments::ExpireSessionsJob do
       described_class.perform_now
 
       expect(published('bank_transfer.expired')).to be_empty
+    end
+  end
+
+  context 'when the order was paid and then partly refunded' do
+    let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00) }
+
+    before do
+      healthy!
+      payment = create(:payment, order: order, amount: order.total, status: 'completed')
+      create(:refund, payment: payment, amount: 5)
+      Spree.order_update_statuses_service.call(order: order.reload)
+    end
+
+    it 'leaves the order alone' do
+      described_class.perform_now
+
+      expect(order.reload.status).to eq('placed')
+    end
+  end
+
+  # An exception for one session (a void the gateway rejects, say) must not
+  # stop the run for every later session on the same gateway.
+  context 'when closing one session raises' do
+    let(:other_order) { create(:completed_order_with_totals) }
+    let!(:other_session) do
+      create(:bank_transfer_payment_session, order: other_order, payment_method: payment_method, expires_at: 1.hour.ago)
+    end
+
+    before do
+      healthy!
+      allow(Rails.error).to receive(:report)
+      allow(Spree.order_cancel_workflow).to receive(:call).and_wrap_original do |original, **options|
+        raise Spree::Core::GatewayError, 'void refused' if options[:order] == order
+
+        original.call(**options)
+      end
+    end
+
+    it 'still cancels the next order' do
+      described_class.perform_now
+
+      expect(other_order.reload.status).to eq('canceled')
+    end
+
+    it 'reports the session that failed' do
+      described_class.perform_now
+
+      expect(published('bank_transfer.expiry_failed').map { |payload| payload['payment_session_id'] }).
+        to include(session.prefixed_id)
     end
   end
 

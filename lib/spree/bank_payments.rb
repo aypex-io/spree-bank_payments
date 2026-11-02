@@ -21,6 +21,11 @@ module Spree
 
     ADJUSTER_NAME = 'Spree::BankPayments::Adjusters::Discount'.freeze
 
+    # Payment statuses meaning the order has been paid for, refunds or not.
+    # Such an order is never cancelled for an unpaid transfer, and a transfer
+    # arriving for it is a person's call, not an automatic second payment.
+    SETTLED_PAYMENT_STATUSES = %w[paid overcharged partially_refunded refunded].freeze
+
     # Adds the discount adjuster to Spree.adjusters, exactly once.
     #
     # Called from both hooks in config/initializers/spree.rb: from
