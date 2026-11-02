@@ -18,7 +18,10 @@ Spree::Core::Engine.add_routes do
                 post :sync
               end
             end
+            resource :health, only: :show, controller: 'health'
           end
+
+          resources :orders, only: :show
         end
       end
     end
