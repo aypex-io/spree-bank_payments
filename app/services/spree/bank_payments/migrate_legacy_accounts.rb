@@ -35,7 +35,11 @@ module Spree
           end
           next if fields.empty?
 
-          currency = gateway.store&.default_currency.presence || Spree::Config[:currency]
+          # The gateway's own store, never another one's. A row that predates
+          # Spree 6 giving every payment method a store falls back to the
+          # default store, the one such a row was quoting for.
+          currency = gateway.store&.default_currency.presence || Spree::Store.default&.default_currency
+          next if currency.blank?
 
           gateway.bank_accounts.create!(
             currency: currency.to_s.upcase,

@@ -16,7 +16,7 @@ RSpec.describe 'legacy account preference migration' do
 
     account = gateway.reload.bank_accounts.sole
 
-    expect(account.currency).to eq(Spree::Config[:currency].upcase)
+    expect(account.currency).to eq(gateway.store.default_currency.upcase)
     expect(account).to be_offered
     expect(account.detail_sets.first.fields).to include(['IBAN', 'GB00OLD00000000000000'])
   end
@@ -83,6 +83,15 @@ RSpec.describe 'legacy account preference migration' do
     Spree::BankPayments::MigrateLegacyAccounts.call
 
     expect(eur_gateway.reload.bank_accounts.sole.currency).to eq('EUR')
-    expect(Spree::Config[:currency].upcase).not_to eq('EUR')
+  end
+
+  # Spree 6 gives every payment method a store, but a row written before the
+  # upgrade backfilled one may still have none.
+  it "falls back to the default store's currency for a gateway with no store" do
+    gateway.update_column(:store_id, nil)
+
+    Spree::BankPayments::MigrateLegacyAccounts.call
+
+    expect(gateway.bank_accounts.sole.currency).to eq(Spree::Store.default.default_currency.upcase)
   end
 end
