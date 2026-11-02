@@ -8,7 +8,7 @@ module Spree
           class TransfersController < ResourceController
             # Re-declaring the callback replaces ResourceController's, so this
             # lists its actions too.
-            before_action :set_resource, only: %i[show update destroy suggestions]
+            before_action :set_resource, only: %i[show update destroy suggestions apply ignore]
 
             # GET /api/v3/admin/bank_payments/transfers/:id/suggestions
             #
@@ -45,6 +45,42 @@ module Spree
               render_errors(errors_by_api_field(e.model.errors))
             end
 
+            # POST /api/v3/admin/bank_payments/transfers/:id/apply
+            #
+            # Applies the transfer to the session staff chose. A transfer whose
+            # amount or currency differs from the session's takes two
+            # deliberate steps: the first request is refused with both
+            # amounts, and only one carrying confirm_mismatch applies it,
+            # credited for what actually arrived. A transfer is never applied
+            # to another gateway's session, and another store's session is a
+            # 404.
+            def apply
+              return refuse_applied if @resource.applied?
+
+              payment_session = store_bank_transfer_session(params[:payment_session_id])
+              return refuse_gateway_mismatch if gateway_mismatch?(payment_session)
+              return refuse_amount_mismatch(payment_session) if money_mismatch?(payment_session) && !confirmed_mismatch?
+
+              Spree::BankPayments::ApplyTransfer.call(
+                transfer: @resource, payment_session: payment_session, applied_by: current_user
+              )
+              render json: serialize_resource(@resource.reload)
+            rescue Spree::BankPayments::ApplyTransfer::Refused => e
+              render_error(code: 'apply_refused', message: e.message, status: :unprocessable_content)
+            end
+
+            # POST /api/v3/admin/bank_payments/transfers/:id/ignore
+            #
+            # Takes the transfer out of the queue, with the reason staff give.
+            def ignore
+              return refuse_applied if @resource.applied?
+
+              Spree::BankPayments::IgnoreTransfer.call(transfer: @resource, reason: params[:reason])
+              render json: serialize_resource(@resource)
+            rescue ActiveModel::ValidationError => e
+              render_errors(e.model.errors)
+            end
+
             protected
 
             def model_class
@@ -70,6 +106,53 @@ module Spree
               filters = filters.to_h.stringify_keys
               filters['state_eq'] = 'unmatched' unless filters.keys.any? { |key| key.start_with?('state_') }
               filters
+            end
+
+            def authorize_resource!(resource = @resource, action = action_name.to_sym)
+              super(resource, %w[apply ignore].include?(action.to_s) ? :update : action)
+            end
+
+            # A bank transfer session on one of this store's orders, or a 404.
+            def store_bank_transfer_session(id)
+              Spree::PaymentSessions::BankTransfer.
+                joins(:order).where(spree_orders: { store_id: current_store.id }).
+                find_by_prefix_id!(id)
+            end
+
+            def gateway_mismatch?(payment_session)
+              @resource.payment_method_id.present? && @resource.payment_method_id != payment_session.payment_method_id
+            end
+
+            def money_mismatch?(payment_session)
+              @resource.amount != payment_session.amount || !@resource.currency.casecmp?(payment_session.currency.to_s)
+            end
+
+            def confirmed_mismatch?
+              ActiveModel::Type::Boolean.new.cast(params[:confirm_mismatch]) == true
+            end
+
+            def refuse_applied
+              render_error(code: 'already_applied', message: I18n.t('spree.bank_payments.errors.already_applied'),
+                           status: :unprocessable_content)
+            end
+
+            def refuse_gateway_mismatch
+              render_error(code: 'gateway_mismatch', message: I18n.t('spree.bank_payments.errors.gateway_mismatch'),
+                           status: :unprocessable_content)
+            end
+
+            def refuse_amount_mismatch(payment_session)
+              render_error(
+                code: 'amount_mismatch',
+                message: I18n.t('spree.bank_payments.errors.amount_mismatch'),
+                details: {
+                  transfer_amount: Spree::Money::Rounding.format(@resource.amount, @resource.currency),
+                  transfer_currency: @resource.currency,
+                  session_amount: Spree::Money::Rounding.format(payment_session.amount, payment_session.currency),
+                  currency: payment_session.currency
+                },
+                status: :unprocessable_content
+              )
             end
 
             # The store's bank transfer method with that prefixed id, or nil.

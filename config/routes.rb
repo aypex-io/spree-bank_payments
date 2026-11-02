@@ -6,6 +6,8 @@ Spree::Core::Engine.add_routes do
           resources :transfers, only: %i[index show create] do
             member do
               get :suggestions
+              post :apply
+              post :ignore
             end
           end
         end
