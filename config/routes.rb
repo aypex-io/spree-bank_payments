@@ -3,7 +3,7 @@ Spree::Core::Engine.add_routes do
     namespace :v3 do
       namespace :admin do
         namespace :bank_payments do
-          resources :transfers, only: %i[index show] do
+          resources :transfers, only: %i[index show create] do
             member do
               get :suggestions
             end
