@@ -4,18 +4,34 @@ RSpec.describe Spree::BankPayments::ExpireSessionsJob do
   let(:payment_method) { create(:bank_transfer_gateway) }
   let(:order) { create(:completed_order_with_totals) }
   let!(:session) do
-    create(:bank_transfer_payment_session,
-           order: order, payment_method: payment_method, expires_at: 1.hour.ago)
+    create(:bank_transfer_payment_session, order: order, payment_method: payment_method, expires_at: 1.hour.ago)
+  end
+
+  before { capture_published_events }
+
+  def healthy!(healthy = true)
+    allow_any_instance_of(Spree::BankPayments::Gateway).to receive(:reconciler_healthy?).and_return(healthy)
   end
 
   context 'when the reconciler is healthy' do
-    before { allow_any_instance_of(Spree::BankPayments::Gateway).to receive(:reconciler_healthy?).and_return(true) }
+    before { healthy! }
 
-    it 'expires the session and cancels the order' do
+    it 'cancels an unpaid placed order after the deadline' do
+      described_class.perform_now
+
+      expect(order.reload.status).to eq('canceled')
+    end
+
+    it 'expires the session' do
       described_class.perform_now
 
       expect(session.reload.status).to eq('expired')
-      expect(order.reload.state).to eq('canceled')
+    end
+
+    it 'tells the buyer' do
+      described_class.perform_now
+
+      expect(published('bank_transfer.expired').size).to eq(1)
     end
 
     it 'leaves sessions that have not yet expired alone' do
@@ -23,35 +39,65 @@ RSpec.describe Spree::BankPayments::ExpireSessionsJob do
 
       described_class.perform_now
 
-      expect(session.reload.status).to eq('pending')
-      expect(order.reload.state).not_to eq('canceled')
+      expect(order.reload.status).to eq('placed')
     end
   end
 
-  # C2. The customer abandoned the bank transfer and paid by card. The
-  # session is still pending and now past expiry, and order.allow_cancel? is
-  # true for a paid, unshipped order -- so without the guard this job
-  # cancels and restocks an order that has been paid in full.
-  context 'when the order has already been paid another way' do
-    before { allow_any_instance_of(Spree::BankPayments::Gateway).to receive(:reconciler_healthy?).and_return(true) }
+  # Cancelling hands the order's stock back to the shelf.
+  context 'with an order placed through checkout' do
+    let(:gateway) { create(:bank_transfer_gateway) }
+    let(:cart) { stock!(bank_transfer_cart(gateway: gateway, price: 100), quantity: 10) }
+    let(:stock_item) { Spree::StockItem.find_by!(variant_id: cart.line_items.first.variant_id) }
 
-    # Totals pinned so a single card payment lands the order exactly on
-    # 'paid' -- the default factory totals leave it in credit_owed, which
-    # would prove a different thing.
-    let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00, shipment_cost: 0) }
+    before { healthy! }
 
-    before do
-      create(:payment, order: order, amount: order.total, state: 'completed')
-      order.update_with_updater!
-      expect(order.reload.payment_state).to eq('paid')
-    end
+    it 'releases the stock of the cancelled order' do
+      _, placed_session = place_with_bank_transfer(cart, gateway: gateway)
+      placed_session.update_columns(expires_at: 1.hour.ago)
 
-    it 'does not cancel the paid order' do
       described_class.perform_now
 
-      order.reload
-      expect(order.state).not_to eq('canceled')
-      expect(order.payment_state).to eq('paid')
+      expect(stock_item.reload.count_on_hand).to eq(10)
+    end
+  end
+
+  # The buyer picked bank transfer and left. There is no order to cancel and
+  # nobody to tell.
+  context 'with a session whose cart was never placed' do
+    let!(:session) do
+      create(:bank_transfer_payment_session, payment_method: payment_method, expires_at: 1.hour.ago)
+    end
+
+    before { healthy! }
+
+    it 'expires the session' do
+      described_class.perform_now
+
+      expect(session.reload.status).to eq('expired')
+    end
+
+    it 'publishes no expired event' do
+      described_class.perform_now
+
+      expect(published('bank_transfer.expired')).to be_empty
+    end
+  end
+
+  # C2. The buyer abandoned the transfer and paid another way. Cancelling
+  # would refund nothing and restock an order that has been paid in full.
+  context 'when the order has already been paid another way' do
+    let(:order) { create(:completed_order_with_totals, currency: 'GBP', line_items_price: 25.00) }
+
+    before do
+      healthy!
+      create(:payment, order: order, amount: order.total, status: 'completed')
+      Spree.order_update_statuses_service.call(order: order.reload)
+    end
+
+    it 'leaves the paid order alone' do
+      described_class.perform_now
+
+      expect(order.reload.status).to eq('placed')
     end
 
     it 'closes the superseded session as canceled rather than expiring it' do
@@ -60,51 +106,81 @@ RSpec.describe Spree::BankPayments::ExpireSessionsJob do
       expect(session.reload.status).to eq('canceled')
     end
 
-    it 'does not publish the customer-facing expiry event' do
-      allow(Spree::Events).to receive(:publish).and_call_original
-
+    it 'publishes that the session was superseded' do
       described_class.perform_now
 
-      expect(Spree::Events).not_to have_received(:publish).with('bank_transfer.expired', anything)
-      expect(Spree::Events).to have_received(:publish).with('bank_transfer.session_superseded', anything)
+      expect(published('bank_transfer.session_superseded').size).to eq(1)
+    end
+
+    it 'publishes no expired event' do
+      described_class.perform_now
+
+      expect(published('bank_transfer.expired')).to be_empty
     end
   end
 
   context 'when the reconciler is unhealthy' do
-    before { allow_any_instance_of(Spree::BankPayments::Gateway).to receive(:reconciler_healthy?).and_return(false) }
+    before { healthy!(false) }
 
-    # THE critical test. A blind reconciler must never cancel: the customer
-    # may well have paid and we simply cannot see it.
+    # THE critical case. A blind reconciler must never cancel: the buyer may
+    # well have paid and we simply cannot see it.
     it 'cancels nothing' do
       described_class.perform_now
 
+      expect(order.reload.status).to eq('placed')
+    end
+
+    it 'leaves the session open' do
+      described_class.perform_now
+
       expect(session.reload.status).to eq('pending')
-      expect(order.reload.state).not_to eq('canceled')
     end
 
     it 'publishes an unhealthy event instead' do
-      expect(Spree::Events).to receive(:publish).with(
-        'bank_transfer.reconciler_unhealthy',
-        hash_including(payment_method_id: payment_method.id)
-      )
-
       described_class.perform_now
+
+      expect(published('bank_transfer.reconciler_unhealthy').first['payment_method_id']).to eq(payment_method.prefixed_id)
     end
   end
 
-  context 'when the order is not cancellable' do
-    before { allow_any_instance_of(Spree::BankPayments::Gateway).to receive(:reconciler_healthy?).and_return(true) }
+  # Spree can refuse a cancel (a host's before_cancel hook, say). The session
+  # stays open, staff are told, and the run carries on.
+  context 'when Spree refuses a cancellation' do
+    let(:other_order) { create(:completed_order_with_totals) }
+    let!(:other_session) do
+      create(:bank_transfer_payment_session, order: other_order, payment_method: payment_method, expires_at: 1.hour.ago)
+    end
 
-    # order.allow_cancel? is false for an incomplete order. This must not
-    # raise StateMachines::InvalidTransition - it must simply leave the
-    # order alone while still expiring the session.
-    let(:order) { create(:order) }
+    before do
+      healthy!
+      refused = Spree::ServiceModule::Result.new(false, order, Spree::ServiceModule::ResultError.new('Refused by policy'))
+      allow(Spree.order_cancel_workflow).to receive(:call).and_wrap_original do |original, **options|
+        options[:order] == order ? refused : original.call(**options)
+      end
+    end
 
-    it 'expires the session without raising and leaves the order alone' do
-      expect { described_class.perform_now }.not_to raise_error
+    it 'leaves the refused order placed' do
+      described_class.perform_now
 
-      expect(session.reload.status).to eq('expired')
-      expect(order.reload.state).not_to eq('canceled')
+      expect(order.reload.status).to eq('placed')
+    end
+
+    it 'leaves its session open' do
+      described_class.perform_now
+
+      expect(session.reload.status).to eq('pending')
+    end
+
+    it 'reports the refusal' do
+      described_class.perform_now
+
+      expect(published('bank_transfer.expiry_failed').first['error']).to eq('Refused by policy')
+    end
+
+    it 'still cancels the next order' do
+      described_class.perform_now
+
+      expect(other_order.reload.status).to eq('canceled')
     end
   end
 
@@ -112,32 +188,29 @@ RSpec.describe Spree::BankPayments::ExpireSessionsJob do
     let(:other_payment_method) { create(:bank_transfer_gateway) }
     let(:other_order) { create(:completed_order_with_totals) }
     let!(:other_session) do
-      create(:bank_transfer_payment_session,
-             order: other_order, payment_method: other_payment_method, expires_at: 1.hour.ago)
+      create(:bank_transfer_payment_session, order: other_order, payment_method: other_payment_method, expires_at: 1.hour.ago)
     end
 
     before do
       failing_id = payment_method.id
       allow_any_instance_of(Spree::BankPayments::Gateway).to receive(:reconciler_healthy?) do |instance|
-        if instance.id == failing_id
-          raise ArgumentError, 'unknown reconciler'
-        else
-          true
-        end
+        raise ArgumentError, 'unknown reconciler' if instance.id == failing_id
+
+        true
       end
+      allow(Rails.error).to receive(:report)
     end
 
-    it 'publishes an alert for the failing payment method and still processes the healthy one' do
-      allow(Spree::Events).to receive(:publish).and_call_original
+    it 'publishes an alert for the failing payment method' do
+      described_class.perform_now
 
-      expect { described_class.perform_now }.not_to raise_error
+      expect(published('bank_transfer.expiry_failed').first['payment_method_id']).to eq(payment_method.prefixed_id)
+    end
 
-      expect(Spree::Events).to have_received(:publish).with(
-        'bank_transfer.expiry_failed',
-        hash_including(payment_method_id: payment_method.id)
-      )
-      expect(other_session.reload.status).to eq('expired')
-      expect(other_order.reload.state).to eq('canceled')
+    it 'still processes the healthy one' do
+      described_class.perform_now
+
+      expect(other_order.reload.status).to eq('canceled')
     end
   end
 end
