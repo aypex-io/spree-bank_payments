@@ -68,6 +68,19 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::AccountsController, type: :c
     expect(previous.reload).not_to be_offered
   end
 
+  # The dashboard's edit dialog sends every detail set, all of their parts.
+  it "replaces a manual account's detail sets" do
+    manual = account
+    details = uk_details + [{ 'label' => 'International', 'schemes' => %w[swift],
+                              'beneficiary_name' => 'Example Store Ltd',
+                              'beneficiary_address' => "1 Example Street\nLondon",
+                              'fields' => [{ 'label' => 'IBAN', 'value' => 'GB00EXMP00000000000000' }] }]
+
+    patch :update, params: path_params(id: manual.prefixed_id, details: details), as: :json
+
+    expect(manual.reload.details).to eq(details)
+  end
+
   it "refuses to edit a synced account's details" do
     synced = account(provider_account_id: 'acc-1')
 

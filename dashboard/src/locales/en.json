@@ -88,7 +88,16 @@
         "add_field": "Add field",
         "remove_field": "Remove",
         "save": "Save account",
-        "created": "Account added. Offer it for customers to be quoted it."
+        "created": "Account added. Offer it for customers to be quoted it.",
+        "edit": "Edit",
+        "edit_title": "Edit bank account",
+        "set_title": "Details {{number}}",
+        "beneficiary_address": "Account holder's address",
+        "schemes": "Payment schemes",
+        "schemes_placeholder": "faster, bacs, swift…",
+        "add_set": "Add another set of details",
+        "remove_set": "Remove these details",
+        "updated": "Account updated."
       },
       "order_card": {
         "title": "Bank transfer",
