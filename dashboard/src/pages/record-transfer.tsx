@@ -39,6 +39,8 @@ export function RecordTransferPage() {
     queryFn: () => bankPaymentsClient.paymentMethods(),
   })
   const bankMethods = methods?.data ?? []
+  // The trigger shows the chosen item's label, not its id.
+  const methodItems = bankMethods.map((method) => ({ value: method.id, label: method.name }))
   const form = useForm<RecordTransferParams>({
     defaultValues: {
       payment_method_id: '',
@@ -107,6 +109,7 @@ export function RecordTransferPage() {
                 name="payment_method_id"
                 render={({ field: control }) => (
                   <Select
+                    items={methodItems}
                     value={control.value}
                     onValueChange={(value) => control.onChange(value ?? '')}
                   >
