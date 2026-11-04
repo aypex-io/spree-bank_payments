@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## 6.0.1
+
+Found running the gem and plugin end to end on a stock Spree 6 store.
+
+### Fixed
+
+- **The dashboard queue ignored every filter and the search.** The plugin
+  sent the table's filters as bare query parameters (`state_in=unmatched`),
+  and Spree's Admin API reads filters only from `q[...]`, so the queue listed
+  every transfer whatever the status chip, search or date range said. They
+  are now sent as `q[...]`, as Spree's own resource clients send them.
+- **Clearing the queue's filters brought the "unmatched" default back.**
+  "Clear all", or "Select all" in the status chip, now lists every transfer.
+  Only a fresh visit, from the sidebar, opens on unmatched transfers.
+
+### Changed
+
+- The dashboard plugin has unit tests (`pnpm test`), run in CI and before
+  each npm release.
+
 ## 6.0.0
 
 Spree 6 support. The major version tracks Spree's, so 6.x supports Spree 6.

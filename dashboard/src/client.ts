@@ -5,6 +5,7 @@
  */
 import type { PaginatedResponse } from '@spree/admin-sdk'
 import { adminClient } from '@spree/dashboard-core'
+import { listQuery } from './list-query'
 import type {
   BankAccount,
   BankAccountParams,
@@ -29,7 +30,7 @@ export const bankPaymentsClient = {
   transfers: {
     list: (params?: ListParams) =>
       adminClient.request<PaginatedResponse<IncomingTransfer>>('GET', `${base}/transfers`, {
-        params,
+        params: listQuery(params),
       }),
     get: (id: string) => adminClient.request<IncomingTransfer>('GET', `${base}/transfers/${id}`),
     suggestions: (id: string) =>
