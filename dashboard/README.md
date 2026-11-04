@@ -1,4 +1,4 @@
-# @aypex/spree-bank-payments-dashboard
+# @aypex-io/spree-bank-payments-dashboard
 
 The Spree dashboard screens for [`spree-bank_payments`](https://github.com/aypex-io/spree-bank_payments):
 
@@ -21,7 +21,7 @@ bundle add spree-bank_payments
 bin/rails g spree:bank_payments:install
 
 # in the dashboard app
-pnpm add @aypex/spree-bank-payments-dashboard
+pnpm add @aypex-io/spree-bank-payments-dashboard
 ```
 
 The dashboard discovers the plugin on its next build: no code changes.

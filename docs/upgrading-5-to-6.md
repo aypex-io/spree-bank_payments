@@ -43,7 +43,7 @@ the same version:
 
 ```bash
 # in the dashboard app
-pnpm add @aypex/spree-bank-payments-dashboard
+pnpm add @aypex-io/spree-bank-payments-dashboard
 ```
 
 The next dashboard build picks it up. Then give staff roles the **Bank

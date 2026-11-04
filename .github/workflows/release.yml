@@ -15,7 +15,7 @@
 #
 # The dashboard plugin (dashboard/) goes to npm from the same tag, after the
 # gem, also by trusted publishing. It needs a trusted publisher registered on
-# npmjs.com for @aypex/spree-bank-payments-dashboard with:
+# npmjs.com for @aypex-io/spree-bank-payments-dashboard with:
 #   repository  aypex-io/spree-bank_payments
 #   workflow    release.yml
 #   environment release
