@@ -19,6 +19,8 @@
 #   repository  aypex-io/spree-bank_payments
 #   workflow    release.yml
 #   environment release
+# npm only offers that on a package that exists, so its first version was
+# published by hand; a version npm already has is skipped, not republished.
 name: Release
 
 on:
@@ -82,5 +84,18 @@ jobs:
       - name: Typecheck and lint
         run: corepack enable && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint
 
+      # npm sets up trusted publishing on a package that already exists, so the
+      # first version is published by hand. Skip a version npm already has:
+      # that release, and any rerun, then pass instead of failing to republish.
+      - name: Check whether npm already has this version
+        id: published
+        run: |
+          spec="$(node -p 'const p = require("./package.json"); `${p.name}@${p.version}`')"
+          if [ -n "$(npm view "$spec" version 2>/dev/null)" ]; then
+            echo "$spec is already on npm; not publishing it again."
+            echo "already=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish
+        if: steps.published.outputs.already != 'true'
         run: npm publish --provenance --access public
