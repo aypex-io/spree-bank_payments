@@ -45,6 +45,16 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::TransfersController, type: :
       expect(ids).to eq([ignored.prefixed_id])
     end
 
+    # The dashboard queue's status filter, as the plugin sends it: q[state_in][].
+    it 'filters by a list of states' do
+      unmatched = transfer
+      transfer(state: 'ignored')
+
+      get :index, params: { q: { state_in: ['unmatched'] } }
+
+      expect(ids).to eq([unmatched.prefixed_id])
+    end
+
     it "excludes another store's transfers" do
       other_gateway = create(:bank_transfer_gateway, store: create(:store))
       create(:bank_transfer_incoming_transfer, payment_method_id: other_gateway.id)

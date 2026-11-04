@@ -81,8 +81,8 @@ jobs:
       - name: Check the tag matches the plugin's version
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
 
-      - name: Typecheck and lint
-        run: corepack enable && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint
+      - name: Typecheck, lint and test
+        run: corepack enable && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test
 
       # npm sets up trusted publishing on a package that already exists, so the
       # first version is published by hand. Skip a version npm already has:
