@@ -1,0 +1,8 @@
+<%= t('spree.bank_payments.mailer.instructions.heading') %>
+
+<%= t('spree.bank_payments.mailer.instructions.lead', number: @order.number, amount: @session.money.to_s, deadline: deadline) %>
+
+<%= render('payment_details').strip %>
+
+<%= t('spree.bank_payments.mailer.cancel_warning') %>
+<%= t('spree.bank_payments.dispatch_note') %>

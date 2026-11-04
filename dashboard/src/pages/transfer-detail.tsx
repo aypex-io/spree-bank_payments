@@ -17,7 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
   Label,
-  RelativeTime,
   Textarea,
   toastManager,
   useConfirm,
@@ -29,6 +28,7 @@ import { useTranslation } from 'react-i18next'
 import { bankPaymentsClient } from '../client'
 import {
   money,
+  StoreDate,
   TransferStateBadge,
   useCanManageBankTransfers,
   useStoreId,
@@ -78,7 +78,7 @@ function TransferFacts({ transfer }: { transfer: IncomingTransfer }) {
     [t('admin.bank_payments.fields.payer_name'), transfer.payer_name || '—'],
     [
       t('admin.bank_payments.fields.occurred_at'),
-      <RelativeTime key="at" iso={transfer.occurred_at} />,
+      <StoreDate key="at" iso={transfer.occurred_at} />,
     ],
     [
       t('admin.bank_payments.fields.account'),

@@ -20,6 +20,30 @@ RSpec.describe Spree::BankPayments::RecordManualTransfer do
     expect([already_recorded, Spree::BankPayments::IncomingTransfer.count]).to eq([true, 1])
   end
 
+  # The dashboard sends the day the money arrived, on the store's calendar.
+  # Read in UTC, a transfer received today showed as "about 23 hours ago",
+  # and in a store west of UTC it fell on the day before.
+  it "reads a typed date as that day in the store's time zone" do
+    transfer, = record(occurred_at: '2026-11-04', time_zone: 'America/New_York')
+
+    expect(transfer.occurred_at).to eq(Time.find_zone('America/New_York').local(2026, 11, 4))
+  end
+
+  it 'reads a full timestamp as the instant it names' do
+    transfer, = record(occurred_at: '2026-11-04T10:15:00Z', time_zone: 'America/New_York')
+
+    expect(transfer.occurred_at).to eq(Time.utc(2026, 11, 4, 10, 15))
+  end
+
+  # The identity hashes the typed date, so reading it in another zone must
+  # not make a transfer recorded before this change look new.
+  it 'recognises a transfer recorded before dates were read in the store time zone' do
+    record(occurred_at: '2026-11-04')
+    _, already_recorded = record(occurred_at: '2026-11-04', time_zone: 'Pacific/Auckland')
+
+    expect(already_recorded).to be(true)
+  end
+
   it 'records it as a manual transfer' do
     transfer, = record
 

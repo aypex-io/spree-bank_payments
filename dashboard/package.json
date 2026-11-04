@@ -1,6 +1,6 @@
 {
   "name": "@aypex-io/spree-bank-payments-dashboard",
-  "version": "6.0.1",
+  "version": "6.1.0",
   "description": "Spree dashboard plugin for spree-bank_payments: the unmatched-transfers queue, recording received transfers, bank accounts, the order's bank transfer card and the payment method's setup guide.",
   "license": "MIT",
   "type": "module",
