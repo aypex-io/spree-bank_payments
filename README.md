@@ -224,11 +224,11 @@ single open session on a placed, unpaid order) is applied automatically and
 the order reads `paid`. Anything else is kept as an unmatched
 `Spree::BankPayments::IncomingTransfer` for a person to decide. They decide
 in Spree's dashboard, through a plugin released with the gem at the same
-version, [`@aypex/spree-bank-payments-dashboard`](dashboard/README.md):
+version, [`@aypex-io/spree-bank-payments-dashboard`](dashboard/README.md):
 
 ```bash
 # in the dashboard app (the one built with Spree's dashboard-starter)
-pnpm add @aypex/spree-bank-payments-dashboard
+pnpm add @aypex-io/spree-bank-payments-dashboard
 ```
 
 The dashboard discovers the plugin on its next build. It adds:

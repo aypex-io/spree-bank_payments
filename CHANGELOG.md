@@ -30,7 +30,7 @@ Spree 5.6 stays on 5.3.x, on the `5-3-stable` branch. To upgrade, see
 
 ### The dashboard
 
-- **A Spree dashboard plugin**, `@aypex/spree-bank-payments-dashboard` on
+- **A Spree dashboard plugin**, `@aypex-io/spree-bank-payments-dashboard` on
   npm, released with the gem at the same version. `pnpm add` it in the
   dashboard app and the next build picks it up. It brings back the 5.x
   screens: the unmatched-transfers queue under Orders, each transfer's

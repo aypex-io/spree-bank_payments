@@ -18,7 +18,7 @@ customer. Reference examples use `ACME-`: it has none of the letters
 normalization folds (O, I, L).
 
 `dashboard/` is the Spree dashboard plugin,
-`@aypex/spree-bank-payments-dashboard` on npm. It is released with the gem on
+`@aypex-io/spree-bank-payments-dashboard` on npm. It is released with the gem on
 the same `v*` tag and carries the same version.
 
 `docs/design-spec.md` is the behaviour the gem keeps. `docs/superpowers/`

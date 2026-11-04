@@ -1,5 +1,5 @@
 /**
- * @aypex/spree-bank-payments-dashboard: the spree-bank_payments screens for
+ * @aypex-io/spree-bank-payments-dashboard: the spree-bank_payments screens for
  * Spree's dashboard. Activated automatically: the package.json marker lets
  * the host's spreeDashboardPlugin() discover it.
  *
