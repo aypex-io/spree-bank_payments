@@ -1,0 +1,11 @@
+<%= t('spree.bank_payments.reference') %>: <%= @session.reference %>
+<%= t('spree.bank_payments.amount_to_transfer') %>: <%= @session.money.to_s %>
+<%= t('spree.bank_payments.transfer_by') %>: <%= deadline %>
+
+<%= t('spree.bank_payments.reference_help') %>
+<% @detail_sets.each do |set| %>
+
+<% if set.label.present? %><%= set.label %>
+<% end %><% if set.beneficiary_name.present? %><%= t('spree.bank_payments.beneficiary') %>: <%= set.beneficiary_name %>
+<% end %><% set.fields.each do |label, value| %><%= label %>: <%= value %>
+<% end %><% end %>

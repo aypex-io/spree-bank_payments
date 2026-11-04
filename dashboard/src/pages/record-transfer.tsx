@@ -1,4 +1,4 @@
-import { mapSpreeErrorsToForm, PageHeader } from '@spree/dashboard-core'
+import { mapSpreeErrorsToForm, PageHeader, useStore } from '@spree/dashboard-core'
 import {
   Button,
   Card,
@@ -19,6 +19,7 @@ import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { bankPaymentsClient } from '../client'
 import { useStoreId } from '../components/shared'
+import { todayIn } from '../store-dates'
 import type { RecordTransferParams } from '../types'
 import { transfersQueryKey } from './transfers-list'
 
@@ -32,6 +33,7 @@ export function RecordTransferPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const storeId = useStoreId()
+  const { timezone } = useStore()
   // The gem's own list, not Spree's payment methods endpoint: that one needs
   // the store's settings, which a role that records transfers may not have.
   const { data: methods } = useQuery({
@@ -48,7 +50,7 @@ export function RecordTransferPage() {
       currency: '',
       reference: '',
       payer_name: '',
-      occurred_at: new Date().toISOString().slice(0, 10),
+      occurred_at: todayIn(timezone),
     },
   })
 

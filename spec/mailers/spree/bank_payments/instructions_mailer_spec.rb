@@ -11,59 +11,122 @@ RSpec.describe Spree::BankPayments::InstructionsMailer, type: :mailer do
   # order's currency. Leaving this at the USD factory default made the
   # fixture look currency-agnostic when it silently wasn't.
   let(:order) { create(:completed_order_with_totals, currency: 'GBP') }
+  let(:store) { order.store }
+  # 03:30 UTC on the 12th is 22:30 on the 11th in New York: a deadline
+  # rendered in UTC, or as a count of days, would tell a buyer there the
+  # wrong day.
   let(:session) do
-    create(:bank_transfer_payment_session, order: order, payment_method: payment_method)
+    create(:bank_transfer_payment_session, order: order, payment_method: payment_method).tap do |session|
+      session.update_columns(expires_at: Time.utc(2026, 11, 12, 3, 30))
+    end
   end
 
+  def html(mail) = mail.html_part.decoded
+  def text(mail) = mail.text_part.decoded
+
   describe '#instructions' do
+    before { store.update!(preferred_timezone: 'America/New_York') }
+
     subject(:mail) { described_class.instructions(session.prefixed_id) }
 
     it 'sends to the order email' do
       expect(mail.to).to eq([order.email])
     end
 
-    it 'renders the reference subject' do
-      expect(mail.subject).to eq(I18n.t('spree.bank_payments.reference'))
+    it 'names the store and the order in the subject' do
+      expect(mail.subject).to eq("#{store.name} Bank transfer details for order ##{order.number}")
     end
 
-    it 'includes the payment reference in the body' do
-      expect(mail.body.encoded).to include(session.reference)
+    it 'names the order in the body' do
+      expect(html(mail)).to include("##{order.number}")
+    end
+
+    it "gives the deadline in the store's time zone" do
+      expect(html(mail)).to include('11 November 2026, 22:30 EST')
+    end
+
+    it 'says what happens if the transfer does not arrive' do
+      expect(html(mail)).to include("If we don’t receive it by then, we’ll cancel the order.")
+    end
+
+    it 'includes the payment reference and the amount in the body' do
+      expect(html(mail)).to include(session.reference, session.money.to_s)
     end
 
     it 'includes every detail set, labelled, in the body' do
-      expect(mail.body.encoded).to include('UK payments')
-      expect(mail.body.encoded).to include('International')
-      expect(mail.body.encoded).to include('04-00-75')
-      expect(mail.body.encoded).to include('GB00REVO00000000000000')
+      expect(html(mail)).to include('UK payments', 'International', '04-00-75', 'GB00REVO00000000000000')
+    end
+
+    it 'has a plain-text part with the reference, the deadline and the bank details' do
+      expect(text(mail)).to include(session.reference, '11 November 2026, 22:30 EST', '04-00-75')
     end
   end
 
   describe '#reminder' do
-    subject(:mail) { described_class.reminder(session.prefixed_id) }
+    before { store.update!(preferred_timezone: 'America/New_York') }
 
-    let(:days_remaining) { (session.expires_at.to_date - Date.current).to_i }
+    subject(:mail) { described_class.reminder(session.prefixed_id) }
 
     it 'sends to the order email' do
       expect(mail.to).to eq([order.email])
     end
 
-    it 'renders a pay-within subject that matches the days remaining on the session' do
-      expect(mail.subject).to eq(I18n.t('spree.bank_payments.pay_within', days: days_remaining))
+    # A count of days reads "within 1 days", and is a different number
+    # depending on whose midnight it is counted from.
+    it 'names the order and the deadline date in the subject' do
+      expect(mail.subject).to eq("#{store.name} Reminder: pay for order ##{order.number} by 11 November 2026")
     end
 
-    it 'states the same days-remaining figure in the subject and the body, so they cannot drift' do
-      expect(mail.body.encoded).to include(I18n.t('spree.bank_payments.pay_within', days: days_remaining))
+    it "gives the deadline in the store's time zone in the body" do
+      expect(html(mail)).to include('11 November 2026, 22:30 EST')
+    end
+
+    it 'allows for a transfer already on its way' do
+      expect(html(mail)).to include('a transfer can take a few days to arrive')
     end
 
     it 'includes the payment reference in the body' do
-      expect(mail.body.encoded).to include(session.reference)
+      expect(html(mail)).to include(session.reference)
     end
 
     it 'includes every detail set, labelled, in the body' do
-      expect(mail.body.encoded).to include('UK payments')
-      expect(mail.body.encoded).to include('International')
-      expect(mail.body.encoded).to include('04-00-75')
-      expect(mail.body.encoded).to include('GB00REVO00000000000000')
+      expect(html(mail)).to include('UK payments', 'International', '04-00-75', 'GB00REVO00000000000000')
+    end
+
+    it 'has a plain-text part' do
+      expect(text(mail)).to include(session.reference, '04-00-75')
+    end
+  end
+
+  describe '#expired' do
+    before { store.update!(preferred_timezone: 'America/New_York') }
+
+    subject(:mail) { described_class.expired(session.prefixed_id) }
+
+    it 'sends to the order email' do
+      expect(mail.to).to eq([order.email])
+    end
+
+    it 'says in the subject that the order was cancelled, and why' do
+      expect(mail.subject).to eq("#{store.name} Order ##{order.number} cancelled: bank transfer not received")
+    end
+
+    it 'names the order, the amount and the deadline that passed' do
+      expect(html(mail)).to include("##{order.number}", session.money.to_s, '11 November 2026, 22:30 EST')
+    end
+
+    it 'tells a buyer who already paid what to do' do
+      expect(html(mail)).to include("If you’ve already sent the transfer, reply to this email")
+    end
+
+    # The order is cancelled: bank details would invite a payment nobody
+    # can match.
+    it 'leaves out the bank details' do
+      expect(html(mail)).not_to include('04-00-75')
+    end
+
+    it 'has a plain-text part' do
+      expect(text(mail)).to include("##{order.number}", '11 November 2026, 22:30 EST')
     end
   end
 

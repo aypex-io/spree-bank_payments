@@ -25,7 +25,25 @@ en:
         order_not_placed: "This bank transfer's order was never placed, so there is nothing to apply it to."
       discount_label: "Bank Transfer discount (%{percent}%)"
       payment_method_label: "Bank Transfer — save %{percent}%"
-      pay_within: "Please transfer within %{days} days"
+      mailer:
+        # I18n.l formats: the deadline is shown in the store's time zone.
+        deadline_time_format: "%-d %B %Y, %H:%M %Z"
+        deadline_date_format: "%-d %B %Y"
+        cancel_warning: "If we don’t receive it by then, we’ll cancel the order."
+        instructions:
+          subject: "%{store} Bank transfer details for order #%{number}"
+          heading: "Pay by bank transfer"
+          lead: "Thanks for your order #%{number}. To complete it, please transfer %{amount} by %{deadline}, quoting your payment reference."
+        reminder:
+          subject: "%{store} Reminder: pay for order #%{number} by %{deadline}"
+          heading: "Your bank transfer is due"
+          lead: "We haven’t received your bank transfer for order #%{number} yet. Please transfer %{amount} by %{deadline}, quoting your payment reference, or we’ll cancel the order."
+          already_sent: "If you’ve already sent it, thank you: a transfer can take a few days to arrive."
+        expired:
+          subject: "%{store} Order #%{number} cancelled: bank transfer not received"
+          heading: "Your order has been cancelled"
+          lead: "We didn’t receive your bank transfer of %{amount} for order #%{number} by %{deadline}, so we’ve cancelled the order."
+          already_sent: "If you’ve already sent the transfer, reply to this email and we’ll sort it out."
       dispatch_note: "Your order is dispatched once funds clear."
       reference: "Payment reference"
       reference_help: "Please quote this reference exactly, or we may not be able to match your payment."

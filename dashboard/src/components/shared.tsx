@@ -1,5 +1,5 @@
 import { formatMoney } from '@spree/admin-sdk'
-import { i18n, usePermissions } from '@spree/dashboard-core'
+import { formatStoreDate, i18n, usePermissions, useStore } from '@spree/dashboard-core'
 import { Badge } from '@spree/dashboard-ui'
 import { Link, useParams } from '@tanstack/react-router'
 import type { IncomingTransfer, TransferState } from '../types'
@@ -7,6 +7,16 @@ import type { IncomingTransfer, TransferState } from '../types'
 /** Money as the admin's language writes it, from the API's decimal string. */
 export function money(amount: string | null | undefined, currency: string): string {
   return formatMoney(amount, currency, i18n.language)
+}
+
+/**
+ * The day a transfer arrived, on the store's calendar. A recorded transfer
+ * carries only the day, so a relative time ("about 23 hours ago") misstates
+ * when it came, and a bank statement lists it by date anyway.
+ */
+export function StoreDate({ iso }: { iso: string }) {
+  const { timezone } = useStore()
+  return <>{formatStoreDate(iso, timezone)}</>
 }
 
 const stateVariant: Record<TransferState, 'warning' | 'success' | 'secondary'> = {

@@ -17,7 +17,7 @@ module Spree
         include ActiveModel::Model
         include ActiveModel::Validations
 
-        attr_accessor :payment_method, :amount, :currency, :reference, :payer_name, :occurred_at
+        attr_accessor :payment_method, :amount, :currency, :reference, :payer_name, :occurred_at, :time_zone
 
         validates :payment_method, presence: { message: :must_be_store_bank_transfer }
         validates :currency, presence: true
@@ -35,15 +35,22 @@ module Spree
           nil
         end
 
+        # A bare date is the day the money arrived on the store's calendar,
+        # so it is read in the store's time zone; a timestamp with an offset
+        # names its own instant.
         def occurred_at_value
           return if occurred_at.to_s.strip.empty?
 
-          Time.zone.parse(occurred_at.to_s)
+          zone.parse(occurred_at.to_s)
         rescue ArgumentError
           nil
         end
 
         private
+
+        def zone
+          ActiveSupport::TimeZone[time_zone.to_s] || Time.zone
+        end
 
         def amount_positive
           errors.add(:amount, :greater_than, count: 0) unless amount_value&.positive?
@@ -54,12 +61,16 @@ module Spree
         end
       end
 
+      # @param time_zone [String, nil] the store's time zone, which a bare
+      #   date in +occurred_at+ is read in; Time.zone when nil
       # @return [Array(Spree::BankPayments::IncomingTransfer, Boolean)] the
       #   transfer, and whether it had already been recorded
       # @raise [ActiveModel::ValidationError] when the input is invalid
-      def self.call(payment_method:, amount:, currency:, reference:, occurred_at:, payer_name: nil, recorded_by: nil)
+      def self.call(payment_method:, amount:, currency:, reference:, occurred_at:, payer_name: nil, recorded_by: nil,
+                    time_zone: nil)
         entry = Entry.new(payment_method: payment_method, amount: amount, currency: currency,
-                          reference: reference, payer_name: payer_name, occurred_at: occurred_at)
+                          reference: reference, payer_name: payer_name, occurred_at: occurred_at,
+                          time_zone: time_zone)
         entry.validate!
 
         new(entry, recorded_by).call

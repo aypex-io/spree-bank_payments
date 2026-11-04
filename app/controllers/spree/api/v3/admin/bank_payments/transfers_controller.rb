@@ -36,7 +36,7 @@ module Spree
                 payment_method: store_bank_transfer_method(params[:payment_method_id]),
                 amount: params[:amount], currency: params[:currency], reference: params[:reference],
                 payer_name: params[:payer_name], occurred_at: params[:occurred_at],
-                recorded_by: current_user
+                time_zone: current_store.preferred_timezone, recorded_by: current_user
               )
 
               render json: serialize_resource(transfer).merge('already_recorded' => already_recorded),

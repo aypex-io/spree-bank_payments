@@ -21,6 +21,11 @@ RSpec.describe Spree::BankPayments::InstructionsMailerSubscriber, type: :mailer 
       to have_enqueued_mail(Spree::BankPayments::InstructionsMailer, :reminder)
   end
 
+  it 'enqueues the expired mail when an unpaid order is cancelled' do
+    expect { session.publish_bank_transfer_event('bank_transfer.expired') }.
+      to have_enqueued_mail(Spree::BankPayments::InstructionsMailer, :expired)
+  end
+
   context 'when the default mailer is disabled' do
     around do |example|
       Spree::BankPayments::Config.disable_default_mailer = true
@@ -32,6 +37,11 @@ RSpec.describe Spree::BankPayments::InstructionsMailerSubscriber, type: :mailer 
     it 'sends nothing' do
       expect { session.publish_bank_transfer_event('bank_transfer.instructions_ready') }.
         not_to have_enqueued_mail(Spree::BankPayments::InstructionsMailer, :instructions)
+    end
+
+    it 'sends no expired mail' do
+      expect { session.publish_bank_transfer_event('bank_transfer.expired') }.
+        not_to have_enqueued_mail(Spree::BankPayments::InstructionsMailer, :expired)
     end
   end
 end

@@ -156,6 +156,15 @@ RSpec.describe Spree::Api::V3::Admin::BankPayments::TransfersController, type: :
       expect(response).to have_http_status(:created)
     end
 
+    it "reads the received date in the store's time zone" do
+      store.update!(preferred_timezone: 'America/New_York')
+
+      record(occurred_at: '2026-11-04')
+
+      expect(Spree::BankPayments::IncomingTransfer.last.occurred_at).
+        to eq(Time.find_zone('America/New_York').local(2026, 11, 4))
+    end
+
     it 'records nothing twice when the form is resubmitted' do
       2.times { record }
 

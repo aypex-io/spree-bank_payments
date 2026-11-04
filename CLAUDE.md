@@ -56,6 +56,13 @@ The suite must print nothing and raise no deprecations:
   `Gateway#ensure_open!` refuses to complete or update a closed session.
 - **Placement**: `OrderPlacedSubscriber` restarts the payment window and
   publishes `bank_transfer.instructions_ready`.
+- **Emails**: `InstructionsMailerSubscriber` sends `InstructionsMailer`'s
+  instructions, reminder and expired emails on the customer-facing events,
+  unless `Config.disable_default_mailer`. Deadlines are rendered in the
+  store's time zone (`preferred_timezone`); views are ERB, wrapped in Spree's
+  Liquid email layout by `Spree::BaseMailer`, with a `.text.erb` beside each.
+- **Install**: the generator copies migrations and writes the three jobs into
+  Solid Queue's `config/recurring.yml` or sidekiq-cron's `config/schedule.yml`.
 - **Reconciliation**: `IngestTransfer` and `ApplyTransfer` are the single
   implementation of matching and applying. Auto-apply needs an exact
   normalized reference, amount and currency against one open session of a

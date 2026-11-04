@@ -1,7 +1,7 @@
 import './i18n'
 import { defineTable, i18n } from '@spree/dashboard-core'
-import { Badge, RelativeTime } from '@spree/dashboard-ui'
-import { money, TransferReferenceLink, TransferStateBadge } from './components/shared'
+import { Badge } from '@spree/dashboard-ui'
+import { money, StoreDate, TransferReferenceLink, TransferStateBadge } from './components/shared'
 import type { IncomingTransfer } from './types'
 
 /**
@@ -25,7 +25,7 @@ defineTable<IncomingTransfer>('bank_transfers', {
       sortable: true,
       default: true,
       filterType: 'date',
-      render: (transfer) => <RelativeTime iso={transfer.occurred_at} />,
+      render: (transfer) => <StoreDate iso={transfer.occurred_at} />,
     },
     {
       key: 'amount',

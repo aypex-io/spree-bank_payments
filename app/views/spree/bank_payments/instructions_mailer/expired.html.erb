@@ -1,0 +1,8 @@
+<%= render layout: 'spree/shared/mailer_hero' do %>
+  <h1><%= t('spree.bank_payments.mailer.expired.heading') %></h1>
+  <p class="sub"><%= t('spree.bank_payments.mailer.expired.lead', number: @order.number, amount: @session.money.to_s, deadline: deadline) %></p>
+<% end %>
+
+<p><strong><%= t('spree.bank_payments.reference') %>:</strong> <%= @session.reference %></p>
+
+<p><%= t('spree.bank_payments.mailer.expired.already_sent') %></p>

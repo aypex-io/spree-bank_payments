@@ -26,6 +26,13 @@ bin/rails g spree:bank_payments:install
 The generator copies the migrations and then asks whether to run them. Pass
 `--auto-run-migrations` to skip the prompt (useful in scripted installs).
 
+It then schedules the gem's jobs (see [Scheduling](#scheduling)) in the
+app's scheduler: `config/recurring.yml` when Active Job runs on Solid Queue,
+as a stock Spree 6 store does, or `config/schedule.yml` when it runs on
+Sidekiq with `sidekiq-cron`. Pass `--scheduler=solid_queue`,
+`--scheduler=sidekiq_cron` or `--scheduler=none` to choose. With any other
+scheduler it lists the jobs for you to add.
+
 ## Configuration
 
 Add a **Bank transfer** payment method in the Spree dashboard (its API type
@@ -294,8 +301,26 @@ expires and no reminders send:
 | `Spree::BankPayments::SendRemindersJob` | Daily | Sends payment reminders as the expiry deadline approaches |
 | `Spree::BankPayments::PollJob` | Every `poll_interval_minutes` (default 15) | Polls the configured reconciler for new transfers; a successful run is what arms the health gate below |
 
-Wire all three into your scheduler (`sidekiq-cron`, `whenever`, etc.) as part
-of installing this gem, not as an afterthought.
+`bin/rails g spree:bank_payments:install` writes them into Solid Queue's
+`config/recurring.yml` or sidekiq-cron's `config/schedule.yml`; running it
+again adds nothing twice. On Solid Queue:
+
+```yaml
+production:
+  bank_payments_expire_sessions:
+    class: Spree::BankPayments::ExpireSessionsJob
+    schedule: every hour at minute 23
+  bank_payments_send_reminders:
+    class: Spree::BankPayments::SendRemindersJob
+    schedule: every day at 9am
+  bank_payments_poll:
+    class: Spree::BankPayments::PollJob
+    schedule: every 15 minutes
+```
+
+With another scheduler (`whenever`, a Kubernetes CronJob), add the same three
+by hand. `PollJob`'s line assumes the default 15-minute poll interval: match
+it to the gateway's `poll_interval_minutes`.
 
 ## The health gate
 
@@ -370,7 +395,18 @@ empty, so a block subscribed first leaves every one of Spree's own
 subscribers unregistered.
 
 A bundled mailer, `Spree::BankPayments::InstructionsMailerSubscriber`, emails
-the buyer on `instructions_ready` and `reminder_due`. Disable it with:
+the buyer, through Spree's email layout:
+
+| Event | Email |
+|---|---|
+| `instructions_ready` | "Bank transfer details for order #R123": the reference, the amount, the deadline, and the bank details |
+| `reminder_due` | "Reminder: pay for order #R123 by 11 November 2026", with the same details |
+| `expired` | "Order #R123 cancelled: bank transfer not received". No bank details, and a line telling a buyer who already paid to reply |
+
+Each gives the deadline as a date and a time in the store's time zone, and
+has a plain-text part. Expiry cancels the order with `notify_customer:
+false`, so the expired email is the only one the buyer gets about it.
+Disable the mailer with:
 
 ```ruby
 Spree::BankPayments::Config.disable_default_mailer = true

@@ -1,0 +1,7 @@
+<%= t('spree.bank_payments.mailer.expired.heading') %>
+
+<%= t('spree.bank_payments.mailer.expired.lead', number: @order.number, amount: @session.money.to_s, deadline: deadline) %>
+
+<%= t('spree.bank_payments.reference') %>: <%= @session.reference %>
+
+<%= t('spree.bank_payments.mailer.expired.already_sent') %>
