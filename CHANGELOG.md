@@ -4,8 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## 6.1.0
 
-Found running the gem end to end on a stock Spree 6 store, which sends the
-gem's own emails and schedules jobs with Solid Queue.
+Found running the gem and its dashboard plugin end to end on a stock Spree 6
+store, which sends the gem's own emails and schedules jobs with Solid Queue.
+6.0.1 was never released; its fixes ship here.
 
 ### Added
 
@@ -17,8 +18,11 @@ gem's own emails and schedules jobs with Solid Queue.
 - **The install generator schedules the jobs.** It writes `ExpireSessionsJob`,
   `SendRemindersJob` and `PollJob` into `config/recurring.yml` (Solid Queue,
   a stock Spree 6 store) or `config/schedule.yml` (sidekiq-cron), chosen from
-  the app's Active Job adapter or `--scheduler`. Run it again on an existing
-  install: it copies no migration twice and schedules nothing twice.
+  the app's Active Job adapter or `--scheduler`. On an existing install, run
+  `bin/rails g spree:bank_payments:install --skip-migrations` to schedule
+  the jobs only; it schedules nothing twice. A schedule file it cannot edit
+  safely (an anchored or aliased `production` key, ERB, no environment keys)
+  is left as it is, and the jobs are listed to add by hand.
 
 ### Changed
 
@@ -28,25 +32,12 @@ gem's own emails and schedules jobs with Solid Queue.
   name, as Spree's own emails start. The body gives the deadline as a date
   and time in the store's time zone, and the reminder no longer counts days
   ("within 1 days"). Every email has a plain-text part.
+- The bundled mailer honours the store's "send customer emails" setting
+  (`send_consumer_transactional_emails`), as Spree's own customer emails do.
 - The `spree.bank_payments.pay_within` translation is gone; the email copy is
   under `spree.bank_payments.mailer`.
-
-### Fixed
-
-- **A recorded transfer's date is read in the store's time zone.** The record
-  form sends the day the money arrived, and the server read it as midnight
-  UTC, so the queue showed a transfer received today as "about 23 hours ago"
-  and a store west of UTC could show the day before. The form also defaulted
-  to the browser's UTC date, a day ahead every evening west of UTC. Transfers
-  already recorded keep their identity, so recording one again still says
-  "already recorded". Their stored time is not changed: in a store west of
-  UTC, one recorded on 6.0.x still shows the day before.
-- The queue and the transfer page show the day a transfer arrived as a date
-  in the store's time zone, not a relative time.
-
-## 6.0.1
-
-Found running the gem and plugin end to end on a stock Spree 6 store.
+- The dashboard plugin has unit tests (`pnpm test`), run in CI and before
+  each npm release.
 
 ### Fixed
 
@@ -58,11 +49,16 @@ Found running the gem and plugin end to end on a stock Spree 6 store.
 - **Clearing the queue's filters brought the "unmatched" default back.**
   "Clear all", or "Select all" in the status chip, now lists every transfer.
   Only a fresh visit, from the sidebar, opens on unmatched transfers.
-
-### Changed
-
-- The dashboard plugin has unit tests (`pnpm test`), run in CI and before
-  each npm release.
+- **A recorded transfer's date is read in the store's time zone.** The record
+  form sends the day the money arrived, and the server read it as midnight
+  UTC, so the queue showed a transfer received today as "about 23 hours ago"
+  and a store west of UTC could show the day before. The form also defaulted
+  to the browser's UTC date, a day ahead every evening west of UTC. Transfers
+  already recorded keep their identity, so recording one again still says
+  "already recorded". Their stored time is not changed: in a store west of
+  UTC, one recorded on 6.0.x still shows the day before.
+- The queue and the transfer page show the day a transfer arrived as a date
+  in the store's time zone, not a relative time.
 
 ## 6.0.0
 

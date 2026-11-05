@@ -63,6 +63,14 @@ export function RecordTransferPage() {
     }
   }, [firstMethodId, form])
 
+  // The store loads after the form first renders, and until it does the
+  // time zone is the browser's: move an untouched date onto the store's day.
+  useEffect(() => {
+    if (!form.getFieldState('occurred_at').isDirty) {
+      form.setValue('occurred_at', todayIn(timezone))
+    }
+  }, [timezone, form])
+
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const transfer = await bankPaymentsClient.transfers.record(values)

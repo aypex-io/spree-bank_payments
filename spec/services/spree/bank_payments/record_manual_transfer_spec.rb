@@ -44,6 +44,14 @@ RSpec.describe Spree::BankPayments::RecordManualTransfer do
     expect(already_recorded).to be(true)
   end
 
+  # A timestamp's identity is its date where it was read before: Time.zone.
+  it 'recognises a timestamped transfer recorded before dates were read in the store time zone' do
+    record(occurred_at: '2026-11-05T02:00:00Z')
+    _, already_recorded = record(occurred_at: '2026-11-05T02:00:00Z', time_zone: 'America/New_York')
+
+    expect(already_recorded).to be(true)
+  end
+
   it 'records it as a manual transfer' do
     transfer, = record
 
