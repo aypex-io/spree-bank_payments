@@ -31,7 +31,9 @@ app's scheduler: `config/recurring.yml` when Active Job runs on Solid Queue,
 as a stock Spree 6 store does, or `config/schedule.yml` when it runs on
 Sidekiq with `sidekiq-cron`. Pass `--scheduler=solid_queue`,
 `--scheduler=sidekiq_cron` or `--scheduler=none` to choose. With any other
-scheduler it lists the jobs for you to add.
+scheduler, or a schedule file it cannot edit safely, it lists the jobs for
+you to add. On an existing install, `--skip-migrations` schedules the jobs
+without touching migrations.
 
 ## Configuration
 
@@ -302,8 +304,9 @@ expires and no reminders send:
 | `Spree::BankPayments::PollJob` | Every `poll_interval_minutes` (default 15) | Polls the configured reconciler for new transfers; a successful run is what arms the health gate below |
 
 `bin/rails g spree:bank_payments:install` writes them into Solid Queue's
-`config/recurring.yml` or sidekiq-cron's `config/schedule.yml`; running it
-again adds nothing twice. On Solid Queue:
+`config/recurring.yml` or sidekiq-cron's `config/schedule.yml` (or the
+`schedule.yaml` the app already has); running it again adds nothing twice.
+On Solid Queue:
 
 ```yaml
 production:
@@ -405,8 +408,9 @@ the buyer, through Spree's email layout:
 
 Each gives the deadline as a date and a time in the store's time zone, and
 has a plain-text part. Expiry cancels the order with `notify_customer:
-false`, so the expired email is the only one the buyer gets about it.
-Disable the mailer with:
+false`, so the expired email is the only one the buyer gets about it. A
+store whose settings turn off customer emails gets none of these either.
+Disable the mailer alone with:
 
 ```ruby
 Spree::BankPayments::Config.disable_default_mailer = true

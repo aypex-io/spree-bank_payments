@@ -46,6 +46,16 @@ module Spree
           nil
         end
 
+        # The date in the transfer's identity, as 6.0 derived it: the typed
+        # day itself, or a timestamp's date in Time.zone. Reading the date in
+        # the store's zone must not make a transfer recorded before look new.
+        def identity_date
+          typed = occurred_at.to_s.strip
+          return Date.iso8601(typed) if typed.match?(/\A\d{4}-\d{2}-\d{2}\z/)
+
+          occurred_at_value.in_time_zone(Time.zone).to_date
+        end
+
         private
 
         def zone
@@ -103,7 +113,7 @@ module Spree
           currency,
           IncomingTransfer.normalize_reference(entry.reference),
           entry.payer_name.to_s.strip.downcase,
-          entry.occurred_at_value.to_date.iso8601
+          entry.identity_date.iso8601
         ].join('|'))
 
         "#{PROVIDER}-#{digest[0, 32]}"

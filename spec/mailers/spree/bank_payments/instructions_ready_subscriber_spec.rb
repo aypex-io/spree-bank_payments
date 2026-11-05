@@ -26,6 +26,20 @@ RSpec.describe Spree::BankPayments::InstructionsMailerSubscriber, type: :mailer 
       to have_enqueued_mail(Spree::BankPayments::InstructionsMailer, :expired)
   end
 
+  # The store setting Spree's own customer emails honour.
+  context 'when the store sends no customer emails' do
+    before do
+      gateway.store.update!(preferences: gateway.store.preferences.merge(send_consumer_transactional_emails: false))
+    end
+
+    %w[instructions_ready reminder_due expired].each do |event|
+      it "sends nothing on #{event}" do
+        expect { session.publish_bank_transfer_event("bank_transfer.#{event}") }.
+          not_to have_enqueued_mail(Spree::BankPayments::InstructionsMailer)
+      end
+    end
+  end
+
   context 'when the default mailer is disabled' do
     around do |example|
       Spree::BankPayments::Config.disable_default_mailer = true
