@@ -83,7 +83,8 @@ module Spree
         # generator runs in development: a bundled solid_queue with a
         # recurring.yml settles it.
         def detected_scheduler
-          case Rails.application.config.active_job.queue_adapter.to_s
+          # Spree's test-app task runs this with no application loaded.
+          case Rails.application&.config&.active_job&.queue_adapter.to_s
           when 'solid_queue' then 'solid_queue'
           when 'sidekiq' then bundled?('sidekiq-cron') ? 'sidekiq_cron' : 'none'
           else bundled?('solid_queue') && schedule_file?(RECURRING) ? 'solid_queue' : 'none'

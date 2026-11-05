@@ -197,6 +197,13 @@ RSpec.describe Spree::BankPayments::Generators::InstallGenerator do
       expect(yaml('config/recurring.yml')['production'].keys).to include('bank_payments_send_reminders')
     end
 
+    # Spree's test-app task runs the generator with no application loaded.
+    it 'lists the jobs when no Rails application is loaded' do
+      allow(Rails).to receive(:application).and_return(nil)
+
+      expect { add_schedule_detected }.to output(/SendRemindersJob/).to_stdout
+    end
+
     it 'names --scheduler when it cannot tell' do
       allow(Rails.application.config.active_job).to receive(:queue_adapter).and_return(:async)
 
