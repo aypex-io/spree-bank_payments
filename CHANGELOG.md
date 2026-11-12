@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## 6.1.1
+
+A dashboard plugin release. The gem's Ruby code is unchanged; it moves to
+6.1.1 because the gem and the plugin share a version.
+
+### Changed
+
+- **The plugin accepts i18next 27 and react-i18next 18** as well as 26 and 17
+  (`i18next ^26.2.0 || ^27.0.0`, `react-i18next ^17.0.8 || ^18.0.0`). Spree
+  6.0.4's dashboard accepts both, and the dashboard template of `@spree/cli`
+  3.7.0 starts new stores on 27 and 18, which 6.1.0's peer ranges refused. The
+  plugin's strings, its use of `useTranslation` and the bundle it registers
+  work unchanged on both.
+
+### Fixed
+
+- **A host dashboard's `tsc` passes with the plugin installed.** Leaving the
+  record-transfer page or a transfer's page for the queue failed type checking
+  in the host (`Property 'search' is missing`): the queue route's search
+  validator was a plain function, so TanStack Router required the queue's
+  whole search state on every link to it. The validator marks its input with
+  `SearchSchemaInput`, so a link may pass any search or none. Nothing changes
+  at runtime: a visit with no search still opens on unmatched transfers.
+
 ## 6.1.0
 
 Found running the gem and its dashboard plugin end to end on a stock Spree 6
